@@ -1,0 +1,15 @@
+# Builds the Python package and checks the CLI on every push. The CUDA tool itself needs a GPU to build and test; see
+# CONTRIBUTING.md and reproduce/modal_cases.py.
+name: package
+on: [push, pull_request]
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install build && python -m build
+      - run: pip install dist/*.whl && syncsan --help && syncsan where
+      - run: python -c "import zipfile, glob; n = zipfile.ZipFile(glob.glob('dist/*.whl')[0]).namelist(); assert all(any(x.endswith(f) for x in n) for f in ('syncsan.cu', 'inject_funcs.cu', 'common.h', 'CMakeLists.txt')), n"

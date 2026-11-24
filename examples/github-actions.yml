@@ -1,0 +1,19 @@
+# syncsan in CI: fail the job when a kernel test has a race. Needs a self-hosted runner with an NVIDIA GPU (H100/B200/A100),
+# CUDA 12.8+, cmake >= 3.29 and Python. Copy to .github/workflows/syncsan.yml and point `run` at your kernel tests.
+name: syncsan
+on: [pull_request]
+jobs:
+  races:
+    runs-on: [self-hosted, gpu]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install syncsan
+        run: |
+          pip install "git+https://github.com/ShreshthRajan/syncsan"
+          syncsan build --arch 90          # 90 = H100, 100 = B200, 80 = A100; cached in ~/.cache/syncsan
+      - name: Build the kernels with line info
+        run: make NVCCFLAGS="-lineinfo"    # your build; -lineinfo makes reports name source lines
+      - name: Race-check the kernel tests
+        # --kernel limits checking to the kernels under test (others run uninstrumented, at full speed);
+        # --sample 8 checks one plain load/store site in 8 (synchronization is always checked) to bound the cost.
+        run: syncsan run --kernel my_megakernel --sample 8 --exitcode 1 -- ./build/kernel_tests

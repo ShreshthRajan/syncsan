@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use syncsan, please cite it as below."
+title: "syncsan: happens-before race detection and adversarial weak-memory execution for GPU megakernels"
+authors:
+  - family-names: Rajan
+    given-names: Shreshth
+version: 0.4.0
+date-released: 2026-11-23
+license: Apache-2.0
+repository-code: "https://github.com/ShreshthRajan/syncsan"

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "syncsan"
+version = "0.4.0"
+description = "Finds data races in GPU megakernels and shows what they do to the output: happens-before checking and adversarial weak-memory execution for CUDA binaries"
+license = {text = "Apache-2.0"}
+readme = "README.md"
+requires-python = ">=3.9"
+
+[project.scripts]
+syncsan = "syncsan.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "python"}
+packages = ["syncsan"]
+
+[project.urls]
+Homepage = "https://github.com/ShreshthRajan/syncsan"
+Issues = "https://github.com/ShreshthRajan/syncsan/issues"
