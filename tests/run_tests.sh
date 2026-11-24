@@ -50,6 +50,8 @@ check cpasync_smem_racy racy
 check cpasync_smem_waited clean
 check bulk_store_smem_racy racy
 check bulk_store_smem_waited clean
+check proxy_fence_missing racy       # generic writes, then a bulk store with no fence.proxy.async
+check proxy_fence_present clean
 
 # a release or acquire by one thread covers the other warps of its block only across a barrier
 check mp_block_barriers clean

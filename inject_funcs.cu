@@ -199,6 +199,13 @@ extern "C" __device__ __noinline__ void syncsan_bar_post(int pred, uint32_t id, 
   __syncwarp(lanes);
 }
 
+// After FENCE.VIEW.ASYNC.S (fence.proxy.async for shared memory): the block's count of proxy fences ticks.
+extern "C" __device__ __noinline__ void syncsan_proxy_fence(int pred, uint64_t pstate) {
+  DevState* S = (DevState*)pstate;
+  if (!pred || !S->sm_pf) return;
+  if (get_laneid() == (unsigned)(__ffs(__activemask()) - 1)) atomicAdd(S->sm_pf + linear_cta(S), 1u);
+}
+
 extern "C" __device__ __noinline__ void syncsan_fence(int pred, uint32_t kind, uint64_t pstate) {
   DevState* S = (DevState*)pstate;
   if (!pred) return;
@@ -561,6 +568,7 @@ __device__ void sm_check(DevState* S, uint32_t iid, bool write, bool sync, uint3
     if (!e) continue;
     if (write) {
       const unsigned long long held = *(volatile unsigned long long*)&e->writer;
+      if (slot < 32 && S->sm_pf) e->writer_pf = *(volatile const uint32_t*)(S->sm_pf + b);   // a warp's (generic-proxy) write
       if (held != cur) {
         const uint32_t prev_iid = e->writer_iid;
         const unsigned long long pw = atomicExch(&e->writer, cur); e->writer_iid = iid;
@@ -683,6 +691,23 @@ __device__ void sm_copy(DevState* S, uint32_t iid, bool to_shared, uint32_t smem
   // One thread checks a copy's whole box; a megakernel streams its weights through shared memory this way, so checking
   // every word makes it crawl. The copy is checked at one word per SM_COPY_STRIDE bytes: the warps that read or write the
   // box touch those words too, so a race with the copy is still seen there.
+  // A copy that reads shared memory (a bulk or TMA store) reads it through the async proxy: a warp's generic write to it
+  // must be followed by a fence.proxy.async (in the writing thread or later in the causality chain). If no thread of the
+  // block executed one between the write and the copy's issue, there is none in any chain: that is a race the PTX model
+  // reports as a proxy ordering failure.
+  if (!to_shared && S->sm_pf && S->sm_shadow) {
+    const uint32_t* me = sm_row(S, b, agent);
+    const uint32_t pf = *(volatile const uint32_t*)(S->sm_pf + b);
+    for (uint32_t o = 0; o < bytes; o += SM_COPY_STRIDE) {
+      SmShadow* e = sm_shadow_of(S, (((unsigned long long)b << 32) | ((off + o) >> 2)) + 1);
+      if (!e) continue;
+      const unsigned long long pw = *(volatile unsigned long long*)&e->writer;
+      const uint32_t ps = sm_slot_of(pw);
+      if ((pw & SM_VALID) && (pw & SM_WRITE) && ps < 32 && *(volatile const uint32_t*)(me + ps) >= (uint32_t)pw &&
+          *(volatile uint32_t*)&e->writer_pf == pf)
+        sm_report(S, off + o, e->writer_iid, iid, b, pw, agent, 3u);
+    }
+  }
   for (uint32_t o = 0; o < bytes; o += SM_COPY_STRIDE) sm_check(S, iid, to_shared, false, 4, off + o, b, agent, c);
   if (to_shared) if (uint32_t* m = sm_mbar(S, b, smem_off(mbar))) sm_join(m, sm_row(S, b, agent));
 }

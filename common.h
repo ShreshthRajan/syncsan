@@ -87,6 +87,8 @@ struct SmShadow {
   unsigned long long writer;   // valid:1 | write:1 | sync:1 | slot:6 | clock:32
   unsigned long long reader;
   uint32_t writer_iid, reader_iid;
+  uint32_t writer_pf;          // the block's count of shared-memory proxy fences (fence.proxy.async) at the write
+  uint32_t pad;
 };
 
 // A tensor map, recorded by the host when cuTensorMapEncodeTiled returns: enough to turn a TMA instruction's coordinates
@@ -128,6 +130,7 @@ struct DevState {
   unsigned long long* sm_mbar_key;   // [nb][SM_MBARS]: shared address + 1 of each tracked mbarrier
   uint32_t* sm_mbar;         // [nb][SM_MBARS][SM_SLOTS]
   SmShadow* sm_shadow;       // [1 << sm_shadow_bits]
+  uint32_t* sm_pf;           // [nb]: shared-memory proxy fences (FENCE.VIEW.ASYNC.S) each block has executed
   uint32_t sm_shadow_bits;
   uint32_t adversarial;      // SYNCSAN_ADVERSARIAL: racy plain loads return the value before the last write (see syncsan_mem_adv)
   uint32_t* adv_mask;        // [threads]: words of the current load that raced with their last write

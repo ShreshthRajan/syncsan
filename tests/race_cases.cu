@@ -276,6 +276,22 @@ __global__ void adv_mp(unsigned* flag, unsigned* data, unsigned* out, int acquir
   }
 }
 
+// The warps write shared memory, the block syncs, and thread 0 copies it to global with cp.async.bulk. The copy reads
+// shared memory through the async proxy, so a fence.proxy.async must come between the writes and the copy (CUTLASS's
+// tma_store_fence). fence = 0: none (a proxy race); 1: every thread fences before the barrier.
+__global__ void proxy_store(int* g, int fence) {
+  __shared__ alignas(128) int s[64];
+  const int t = threadIdx.x;
+  s[t] = t;
+  if (fence) asm volatile("fence.proxy.async.shared::cta;" ::: "memory");
+  __syncthreads();
+  if (t == 0) {
+    asm volatile("cp.async.bulk.global.shared::cta.bulk_group [%0], [%1], 256;" :: "l"(g), "r"((unsigned)__cvta_generic_to_shared(s)) : "memory");
+    asm volatile("cp.async.bulk.commit_group;" ::: "memory");
+    asm volatile("cp.async.bulk.wait_group 0;" ::: "memory");
+  }
+}
+
 int main(int argc, char** argv) {
   const char* c = argc > 1 ? argv[1] : "";
   int *buf, *out; int4 *src, *stage;
@@ -319,6 +335,8 @@ int main(int argc, char** argv) {
   }
   else if (!strcmp(c, "cpasync_smem_racy")) cpasync_smem<<<1, 64>>>(buf, out, 0);
   else if (!strcmp(c, "cpasync_smem_waited")) cpasync_smem<<<1, 64>>>(buf, out, 1);
+  else if (!strcmp(c, "proxy_fence_missing")) proxy_store<<<1, 64>>>(buf, 0);
+  else if (!strcmp(c, "proxy_fence_present")) proxy_store<<<1, 64>>>(buf, 1);
   else if (!strcmp(c, "bulk_store_smem_racy")) bulk_store_smem<<<1, 64>>>(buf, 0);
   else if (!strcmp(c, "bulk_store_smem_waited")) bulk_store_smem<<<1, 64>>>(buf, 1);
   else if (!strncmp(c, "tma_", 4)) {

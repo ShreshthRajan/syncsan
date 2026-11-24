@@ -14,7 +14,8 @@ The [low-latency Llama megakernel](https://github.com/HazyResearch/Megakernels) 
 store, a relaxed `atomicAdd` on a counter, a `volatile` spin and a read, with no gpu-scope fence, so the PTX model does
 not order the read after the store. syncsan reports 25 racing instruction pairs in global memory, covering these
 handoffs: Q, K and V into attention, attention output into o_proj, `silu_out` into the down-projection, and the residual
-stream into the next RMS norm, and one pair in shared memory that is not yet explained. On an H100, 8 tokens:
+stream into the next RMS norm, and one pair in shared memory from a second race, in how the QOL page is recycled
+([docs/hazy-megakernel.md](docs/hazy-megakernel.md)). On an H100, 8 tokens:
 
 | Build | Mode | Loads given an older value | Output |
 |---|---|---|---|
@@ -94,9 +95,10 @@ self-hosted GPU runner.
 
 syncsan checks global memory between thread blocks (flags, counters and locks built from relaxed or strong accesses,
 fences, release/acquire and `fence.sc`), shared memory between warps (full and named barriers, mbarriers), and the
-Hopper and Blackwell copy engine. TMA tensor copies, `cp.async.bulk` and `cp.async` are modeled as accesses by the
-block's copy engine that become visible to a warp once it waits on them, with TMA coordinates decoded from the tensor
-maps the program creates. [docs/how-it-works.md](docs/how-it-works.md) describes the model and its limits.
+Hopper and Blackwell copy engine, including the `fence.proxy.async` a bulk or TMA store needs after generic writes to
+the shared memory it reads. TMA tensor copies, `cp.async.bulk` and `cp.async` are modeled as accesses by the block's
+copy engine that become visible to a warp once it waits on them, with TMA coordinates decoded from the tensor maps the
+program creates. [docs/how-it-works.md](docs/how-it-works.md) describes the model and its limits.
 
 On NVIDIA's [cuHadron](https://github.com/NVlabs/cuHadron) race benchmark (SM90), syncsan detects 9 of the 21 single-GPU
 races with no false positives on the fixed builds; compute-sanitizer from CUDA 12.4 detects 5 others, all in shared
@@ -163,7 +165,7 @@ and turns the races it finds into outputs the model allows. [docs/prior-work.md]
 
 [reproduce/](reproduce/) reruns the Hazy, AutoMegaKernel, megakernel-zoo, Lucebox, Mirage, SuperLU_DIST and CUTLASS
 results on rented GPUs through Modal or Daytona. The cuHadron and Magni VM runs are not scripted here yet.
-`tests/run_tests.sh` runs 47 known-answer checks (race and clean cases, adversarial and control cases, the two-stream
+`tests/run_tests.sh` runs 49 known-answer checks (race and clean cases, adversarial and control cases, the two-stream
 check) on a local GPU.
 
 ## Citing

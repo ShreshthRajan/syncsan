@@ -18,7 +18,7 @@ data with a TMA load, a `cp.async` or a plain `ld.global.v4`. The `atomicAdd` is
 by a fence, and the compiled kernel contains no `MEMBAR`, so nothing orders the consumer's reads after the TMA engine's
 writes. syncsan 0.9 reports 26 racing instruction pairs in an 8-token run on H100: 25 in global memory, for example the
 ones below, and one write-write pair in shared memory (a `STS` against a TMA load into the same buffer) that is also
-reported in the fixed build and is not yet explained:
+reported in the fixed build and comes from a second race (below):
 
 | Write | Read |
 |---|---|
@@ -59,6 +59,15 @@ A native run with no instrumentation, using #15's method, fills `silu_out` with 
 generations outside the two token sequences both builds produce most often: 43 of 300 for the original against 6 of 300
 for the release/acquire build (Fisher exact p = 1.7e-8). The same test on `attn_out` gave 23 against 11 (p = 0.05),
 which does not separate the builds at this sample size.
+
+## A second race: the QOL page
+
+With `skip_attn_reduction` set, which is the default (`scheduler.py:40`), the attention storer waits on `O_arrived`,
+stores `O`, and finishes the QOL page (`attention_partial.cu:647`) without waiting on `L_arrived`. The consumer stores
+the LSE into `L_smem` in that page after arriving on `O_arrived` (`:543`). Nothing orders that store before the page is
+handed to the next instruction, whose loader TMA-loads into it; syncsan reports the consumer's `STS` against that TMA
+load (`upgate.cu:48` via `rms_lm_head.cu:99`). In the skip path nothing reads `L_smem`, so skipping the store, or
+waiting on `L_arrived` before finishing the page, removes the race. No wrong output has been observed from it.
 
 ## The fix
 

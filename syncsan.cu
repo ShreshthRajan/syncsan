@@ -150,6 +150,7 @@ static void alloc_state() {
     while (bits < SM_SHADOW_BITS_MAX && (1ull << bits) < 2ull * g_first_nb * (228 * 1024 / 4)) ++bits;
     g_host.sm_shadow_bits = bits;
     CK(cudaMalloc(&g_host.sm_shadow, sizeof(SmShadow) << bits));
+    CK(cudaMalloc(&g_host.sm_pf, sizeof(uint32_t) * MAX_CTAS));
   }
   CK(cudaMalloc(&g_host.wpages, (1ull << WPAGE_BITS) / 8));
   CK(cudaHostAlloc(&g_host.tma, sizeof(TmaDesc) << TMA_BITS, cudaHostAllocMapped));   // the host adds maps as they're made
@@ -213,6 +214,7 @@ static void reset_for_launch(cudaStream_t st, uint32_t grid) {
     CK(cudaMemsetAsync(g_host.sm_mbar_key, 0, sizeof(unsigned long long) * (size_t)nb * SM_MBARS, st));
     CK(cudaMemsetAsync(g_host.sm_mbar, 0, sizeof(uint32_t) * (size_t)nb * SM_MBARS * SM_SLOTS, st));
     if (g_host.sm_shadow) CK(cudaMemsetAsync(g_host.sm_shadow, 0, sizeof(SmShadow) << g_host.sm_shadow_bits, st));
+    if (g_host.sm_pf) CK(cudaMemsetAsync(g_host.sm_pf, 0, sizeof(uint32_t) * (size_t)nb, st));
     // each slot's own entry starts at 1: rows are SM_ROW long with a padding row per block, so the diagonals of all
     // blocks are every (SM_ROW + 1)-th word
     if (cuMemsetD2D32Async((CUdeviceptr)g_host.sm_vc, (size_t)(SM_ROW + 1) * 4, 1u, 1, (size_t)nb * SM_SLOTS, (CUstream)st) != CUDA_SUCCESS) {
@@ -382,6 +384,13 @@ static void instrument(CUcontext ctx, CUfunction kernel) {
           add_id(in);
           nvbit_add_call_arg_const_val64(in, (uint64_t)g_dev);
         }
+        continue;
+      }
+      if (op.rfind("FENCE.VIEW.ASYNC.S", 0) == 0) {   // fence.proxy.async for shared memory
+        if (!g_shared) continue;
+        nvbit_insert_call(in, "syncsan_proxy_fence", IPOINT_AFTER);
+        nvbit_add_call_arg_guard_pred_val(in);
+        nvbit_add_call_arg_const_val64(in, (uint64_t)g_dev);
         continue;
       }
       const bool membar = op.rfind("MEMBAR", 0) == 0, cctl = op.rfind("CCTL", 0) == 0 && op.find("IVALL") != std::string::npos;
@@ -707,7 +716,7 @@ static void instrument(CUcontext ctx, CUfunction kernel) {
   }
 }
 
-static const char* KIND[] = {"write then read", "write then write", "read then write"};
+static const char* KIND[] = {"write then read", "write then write", "read then write", "write, then an async-proxy read"};
 
 static void drain() {   // print records the device has written since the last call
   const unsigned int n = *(volatile unsigned int*)g_host.n_records;
@@ -735,9 +744,11 @@ static void drain() {   // print records the device has written since the last c
             "syncsan: RACE (%s) at %s0x%llx\n"
             "  %s: %s  [%s+0x%x %s]\n"
             "  %s: %s  [%s+0x%x %s]\n"
-            "  no barrier, release/acquire pair, async-copy wait or atomic orders these two accesses\n",
+            "  %s\n",
             KIND[r.kind], sh ? "shared " : "", (unsigned long long)r.addr, who(r.warp_prev).c_str(), a.sass.c_str(), a.func.c_str(), a.offset,
-            a.where.c_str(), who(r.warp_cur).c_str(), b.sass.c_str(), b.func.c_str(), b.offset, b.where.c_str());
+            a.where.c_str(), who(r.warp_cur).c_str(), b.sass.c_str(), b.func.c_str(), b.offset, b.where.c_str(),
+            r.kind == 3 ? "no fence.proxy.async between the generic write and the copy that reads it through the async proxy"
+                        : "no barrier, release/acquire pair, async-copy wait or atomic orders these two accesses");
   }
   g_seen = i;
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.0 (2026-11-24)
+
+- `fence.proxy.async`: a bulk or TMA store that reads shared memory written by a warp with no proxy fence in the block
+  between the write and the copy's issue is reported (`proxy_fence_missing` / `proxy_fence_present`). 49 known-answer
+  checks pass on H100 (`results/tests_0.10_h100_20261124`).
+- Hazy: the shared-memory pair is a second race, the QOL page finished before the consumer's `L_smem` store when
+  `skip_attn_reduction` is set ([docs/hazy-megakernel.md](docs/hazy-megakernel.md)).
+
 ## 0.9.0 (2026-11-24)
 
 - Warp-level ordering between blocks (launches of up to 320 blocks): a release by one thread publishes another warp's

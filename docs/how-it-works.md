@@ -38,6 +38,12 @@ for copies that complete there. The rest of the block is ordered after the copy 
 other blocks at its next release. TMA coordinates become byte ranges through the tensor maps the program encodes, which
 syncsan records by intercepting `cuTensorMapEncodeTiled`.
 
+**Proxy fences.** A bulk or TMA store reads shared memory through the async proxy, so a warp's ordinary write to that
+memory must be followed by `fence.proxy.async` before the copy is issued (CUTLASS's `tma_store_fence`). syncsan counts
+each block's shared-memory proxy fences (`FENCE.VIEW.ASYNC.S`) and reports a copy that reads a word whose last write,
+otherwise ordered before the copy, came after the block's last proxy fence: then no thread fenced in between, so no
+causality chain holds a fence. A fence by an unrelated thread in between hides the report.
+
 ## Adversarial mode
 
 `SYNCSAN_ADVERSARIAL=1` changes what racing loads return. Each write records the value it replaces. syncsan removes each
@@ -85,7 +91,8 @@ not change the output.
 
 **Not checked:** races between lanes of one warp, distributed shared memory, ordering between kernels, streams and host
 copies, multi-GPU programs, programmatic dependent launch, im2col and multicast TMA, WGMMA and tcgen05 operand reads of
-shared memory, and `fence.proxy.async` (generic writes are taken as visible to the copy engine).
+shared memory, `fence.proxy.async` for global memory, and the proxy fence a copy that writes shared memory needs before
+generic reads (completion through `wait_group` or an mbarrier already provides it).
 
 ## Cost
 
