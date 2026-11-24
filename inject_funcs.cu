@@ -626,3 +626,24 @@ extern "C" __device__ __noinline__ void syncsan_mem_hoisted_adv(int pred, uint32
   check_access(S, iid, flags & ~ACC_PRED_NEG, size, addr);
   adv_substitute(S, t, size, addr, ra);
 }
+
+// SYNCSAN_ADVERSARIAL, general form: the original load is removed (nvbit_remove_orig) and done here instead, so its
+// destination registers can be written directly. A word whose load is not ordered after the word's last write gets the
+// value that write replaced (adversarial = 1); every other word, and every word under the control (adversarial = 2),
+// gets what memory holds now. The load is done as a volatile (strong, relaxed) load, which returns a value the
+// original load could also have returned. dst: the first destination register; size: 4, 8 or 16 bytes.
+extern "C" __device__ __noinline__ void syncsan_load_emul(int pred, uint32_t iid, uint32_t flags, uint32_t size, uint64_t addr,
+                                                          uint32_t dst, uint64_t pstate) {
+  if (!pred) return;
+  DevState* S = (DevState*)pstate;
+  const uint32_t t = my_thread(S);
+  S->adv_mask[t] = 0;
+  check_access(S, iid, flags, size, addr);
+  const uint32_t m = S->adversarial == 1 ? S->adv_mask[t] : 0;
+  for (uint32_t w = 0; w < size / 4; ++w) {
+    const uint32_t v = (m >> w) & 1 ? S->adv_old[t * 4 + w] : *(volatile const uint32_t*)(addr + 4ull * w);
+    nvbit_write_reg(dst + w, (int32_t)v);
+  }
+  if (m) atomicAdd(S->adv_count, 1u);
+  else if (S->adversarial == 2 && S->adv_mask[t]) atomicAdd(S->adv_count, 1u);   // control: loads that would have been changed
+}

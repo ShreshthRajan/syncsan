@@ -28,6 +28,22 @@ costs about 9% in latency. The analysis and the fix are in [docs/hazy-megakernel
 output depends on an ordering the PTX model does not promise; it does not show that current hardware produces the
 wrong text.
 
+## Example: AutoMegaKernel
+
+[AutoMegaKernel](https://github.com/RightNow-AI/AutoMegaKernel)'s consumers wait for their inputs with
+`atomicAdd(c, 0)`, which a source comment describes as an acquire. PTX treats it as relaxed, and no fence follows the
+spin, so syncsan reports 24 racing pairs. Its `--verify` flag compares the megakernel's tokens with an eager PyTorch run
+(toy model, H100):
+
+| Build | Mode | Loads given an older value | `--verify` |
+|---|---|---|---|
+| original | native | | pass |
+| original | adversarial | 54,144 | fail |
+| original | control | | pass |
+| wait as `ld.acquire.gpu` | adversarial | 0 | pass |
+
+Details in [docs/automegakernel.md](docs/automegakernel.md).
+
 ## Install
 
 syncsan needs Linux on x86-64, an NVIDIA GPU of compute capability 8.0 or newer (tested on A100, H100 and B200), CUDA
@@ -79,10 +95,8 @@ distributed shared memory, or ordering between kernels, streams and host copies.
 ## Other results
 
 syncsan found an admission race in the [Magni VM](https://github.com/Bobliuuu/mvm) megakernel in one run, after 3,200
-test runs had passed; the fix is submitted as [Bobliuuu/mvm#97](https://github.com/Bobliuuu/mvm/pull/97). It reports 24 racing
-pairs in [AutoMegaKernel](https://github.com/RightNow-AI/AutoMegaKernel), whose consumers spin on `atomicAdd(c, 0)`
-with no fence afterwards; adversarial mode does not yet cover those loads. CUB's decoupled look-back scan, select and
-radix-histogram kernels check clean.
+test runs had passed; the fix is submitted as [Bobliuuu/mvm#97](https://github.com/Bobliuuu/mvm/pull/97). CUB's
+decoupled look-back scan, select and radix-histogram kernels check clean.
 
 ## Cost
 

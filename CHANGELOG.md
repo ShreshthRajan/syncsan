@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 (2026-11-23)
+
+- Adversarial mode replaces each eligible load and performs it itself, so it covers any plain or relaxed global load,
+  not only loads that overwrite their own address register.
+- AutoMegaKernel: adversarial mode makes `--verify` fail; an acquire in its counter wait fixes it.
+- Source chains are computed once per module (a megakernel with thousands of linked functions timed out before).
+
 ## 0.4.0 (2026-11-23)
 
 First public release.

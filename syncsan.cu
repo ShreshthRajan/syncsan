@@ -35,7 +35,7 @@ static std::vector<std::string> g_skip_ops;                         // SYNCSAN_S
 static std::map<std::string, int> g_op_counts;
 static bool g_shared = true;
 static bool g_adv = false, g_adv_control = false;   // SYNCSAN_ADVERSARIAL=1 | control
-static uint64_t g_adv_sites = 0;
+static uint64_t g_adv_sites = 0, g_adv_emul = 0;
 static unsigned int* g_adv_count_host = nullptr;
 static uint32_t g_first_nb = 1;   // blocks in the first instrumented launch (sizes the shared shadow)
 static bool g_check_nc = false, g_async_tma = true, g_async_bulk = true, g_async_wait = true;
@@ -194,52 +194,64 @@ static void reset_for_launch(cudaStream_t st, uint32_t grid) {
 // < attention_partial.cu:612 < storer.cuh:6"): which op of a megakernel an access belongs to, where NVBit's own line
 // info gives only the innermost frame (often a library header). From nvdisasm -gi on the function's cubin; empty when
 // nvdisasm isn't available or SYNCSAN_SYMBOLIZE=0.
+// One nvdisasm pass per module (a megakernel with Doom linked in has thousands of functions in one cubin): section name
+// (".text.<mangled>") -> offset -> chain.
+static std::map<CUmodule, std::map<std::string, std::map<uint32_t, std::string>>> g_chains;
+
 static std::map<uint32_t, std::string> inline_chains(CUcontext ctx, CUfunction f) {
-  std::map<uint32_t, std::string> out;
   const char* sym = getenv("SYNCSAN_SYMBOLIZE");
-  if (sym && !strcmp(sym, "0")) return out;
+  if (sym && !strcmp(sym, "0")) return {};
+  CUmodule mod = nullptr;
+  if (cuFuncGetModule(&mod, f) != CUDA_SUCCESS) mod = nullptr;
+  const std::string section = std::string(".text.") + nvbit_get_func_name(ctx, f, true);   // offsets restart per function
+  if (mod && g_chains.count(mod)) {
+    auto it = g_chains[mod].find(section);
+    return it == g_chains[mod].end() ? std::map<uint32_t, std::string>{} : it->second;
+  }
+  std::map<std::string, std::map<uint32_t, std::string>> all;
   char cubin[64];
   snprintf(cubin, sizeof cubin, "/tmp/syncsan_%d_%p.cubin", (int)getpid(), (void*)f);
-  if (!nvbit_dump_cubin(ctx, f, cubin)) return out;
-  const char* nvd = getenv("NVDISASM") ? getenv("NVDISASM") : "nvdisasm";
-  std::string cmd = std::string(nvd) + " -gi -c " + cubin + " 2>/dev/null";
-  FILE* p = popen(cmd.c_str(), "r");
-  if (!p) { unlink(cubin); return out; }
-  std::vector<std::string> frames, pending;
-  char buf[4096];
-  const std::string section = std::string(".text.") + nvbit_get_func_name(ctx, f, true);   // offsets restart per function
-  bool inside = false;
-  auto base = [](const std::string& path) { const size_t k = path.rfind('/'); return k == std::string::npos ? path : path.substr(k + 1); };
-  while (fgets(buf, sizeof buf, p)) {
-    if (const char* sec = strstr(buf, ".section")) {
-      const char* name = strstr(sec, ".text.");
-      if (name) {
-        std::string n(name); n = n.substr(0, n.find_first_of(",\n\t "));
-        inside = n == section;
-        frames.clear(); pending.clear();
+  if (nvbit_dump_cubin(ctx, f, cubin)) {
+    const char* nvd = getenv("NVDISASM") ? getenv("NVDISASM") : "nvdisasm";
+    std::string cmd = std::string(nvd) + " -gi -c " + cubin + " 2>/dev/null";
+    if (FILE* p = popen(cmd.c_str(), "r")) {
+      std::vector<std::string> frames, pending;
+      std::map<uint32_t, std::string>* cur = nullptr;
+      char buf[4096];
+      auto base = [](const std::string& path) { const size_t k = path.rfind('/'); return k == std::string::npos ? path : path.substr(k + 1); };
+      while (fgets(buf, sizeof buf, p)) {
+        if (const char* sec = strstr(buf, ".section")) {
+          if (const char* name = strstr(sec, ".text.")) {
+            std::string n(name); n = n.substr(0, n.find_first_of(",\n\t "));
+            cur = &all[n];
+            frames.clear(); pending.clear();
+          }
+          continue;
+        }
+        if (!cur) continue;
+        const char* hdr = strstr(buf, "//## File \"");
+        if (hdr) {   // one hop: File "a", line n [inlined at "b", line m]
+          char file[1024]; unsigned line = 0;
+          if (sscanf(hdr, "//## File \"%1023[^\"]\", line %u", file, &line) == 2) pending.push_back(base(file) + ":" + std::to_string(line));
+          continue;
+        }
+        const char* o = strstr(buf, "/*");
+        unsigned off = 0;
+        if (!o || sscanf(o, "/*%x*/", &off) != 1 || !strchr(buf, ';')) continue;
+        if (!pending.empty()) { frames = pending; pending.clear(); }   // nvdisasm prints a chain only when it changes
+        std::string chain;
+        for (size_t k = 0; k < frames.size() && k < 6; ++k) {
+          if (k && frames[k] == frames[k - 1]) continue;
+          chain += (chain.empty() ? "" : " < ") + frames[k];
+        }
+        if (!chain.empty()) (*cur)[off] = chain;
       }
-      continue;
+      pclose(p);
     }
-    if (!inside) continue;
-    const char* hdr = strstr(buf, "//## File \"");
-    if (hdr) {   // one hop: File "a", line n [inlined at "b", line m]
-      char file[1024]; unsigned line = 0;
-      if (sscanf(hdr, "//## File \"%1023[^\"]\", line %u", file, &line) == 2) pending.push_back(base(file) + ":" + std::to_string(line));
-      continue;
-    }
-    const char* o = strstr(buf, "/*");
-    unsigned off = 0;
-    if (!o || sscanf(o, "/*%x*/", &off) != 1 || !strchr(buf, ';')) continue;
-    if (!pending.empty()) { frames = pending; pending.clear(); }   // nvdisasm prints a chain only when it changes
-    std::string chain;
-    for (size_t k = 0; k < frames.size() && k < 6; ++k) {
-      if (k && frames[k] == frames[k - 1]) continue;
-      chain += (chain.empty() ? "" : " < ") + frames[k];
-    }
-    if (!chain.empty()) out[off] = chain;
+    unlink(cubin);
   }
-  pclose(p);
-  unlink(cubin);
+  std::map<uint32_t, std::string> out = all.count(section) ? all[section] : std::map<uint32_t, std::string>{};
+  if (mod) g_chains[mod] = std::move(all);
   return out;
 }
 
@@ -580,6 +592,28 @@ static void instrument(CUcontext ctx, CUfunction kernel) {
         }
         if (!src_of_copy || mref == 1) {
           if (g_bare) { nvbit_insert_call(in, "syncsan_bare", g_after ? IPOINT_AFTER : IPOINT_BEFORE); ++mref; continue; }
+          // adversarial, general form: replace the load (see syncsan_load_emul). Not after an in-flight load: the call would
+          // sit right after it (the sm_90 hazard).
+          {
+            const InstrType::operand_t* d0 = in->getOperand(0);
+            const bool emul = g_adv && !src_of_copy && !(flags & (ACC_WRITE | ACC_ATOMIC | ACC_SHARED)) &&
+                              (op.rfind("LDG", 0) == 0 || op == "LD" || op.rfind("LD.", 0) == 0) && op.find("ZFILL") == std::string::npos &&
+                              d0->type == InstrType::OperandType::REG && (in->getSize() == 4 || in->getSize() == 8 || in->getSize() == 16) &&
+                              !(pos > 0 && in_flight(instrs[pos - 1]));
+            if (emul) {
+              nvbit_insert_call(in, "syncsan_load_emul", IPOINT_BEFORE);
+              nvbit_add_call_arg_guard_pred_val(in);
+              nvbit_add_call_arg_const_val32(in, iid);
+              nvbit_add_call_arg_const_val32(in, flags);
+              nvbit_add_call_arg_const_val32(in, (uint32_t)in->getSize());
+              nvbit_add_call_arg_mref_addr64(in, mref);
+              nvbit_add_call_arg_const_val32(in, (uint32_t)d0->u.reg.num);
+              nvbit_add_call_arg_const_val64(in, (uint64_t)g_dev);
+              nvbit_remove_orig(in);
+              ++g_adv_sites; ++g_adv_emul; ++mref;
+              continue;
+            }
+          }
           // adversarial: a weak global load whose destination overwrites its whole 64-bit address register
           const InstrType::operand_t* mo = in->getOperand(i);
           const InstrType::operand_t* d0 = in->getOperand(0);
@@ -745,9 +779,9 @@ void nvbit_at_term() {
             (unsigned long long)g_hoisted, (unsigned long long)g_hazard_skipped);
 
   if (g_adv) {
-    fprintf(stderr, "syncsan: ADVERSARIAL%s %llu load sites eligible, %u loads %s\n", g_adv_control ? " (control)" : "",
-            (unsigned long long)g_adv_sites, g_adv_count_host ? *g_adv_count_host : 0u,
-            g_adv_control ? "redirected with their current values" : "returned the value before a racing write");
+    fprintf(stderr, "syncsan: ADVERSARIAL%s %llu load sites eligible (%llu replaced), %u loads %s\n", g_adv_control ? " (control)" : "",
+            (unsigned long long)g_adv_sites, (unsigned long long)g_adv_emul, g_adv_count_host ? *g_adv_count_host : 0u,
+            g_adv_control ? "raced (given their current values)" : "returned the value before a racing write");
   }
   if (g_tma_maps || g_tma_skipped)
     fprintf(stderr, "syncsan: %llu tensor maps decoded for TMA checks, %llu not (unsupported layout)\n",

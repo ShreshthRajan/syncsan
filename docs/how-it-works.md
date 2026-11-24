@@ -31,13 +31,14 @@ syncsan records by intercepting `cuTensorMapEncodeTiled`.
 
 ## Adversarial mode
 
-`SYNCSAN_ADVERSARIAL=1` changes what racing loads return. Each write records the value it replaces. When a plain
-global load is not ordered after the last write to a word, syncsan redirects the load to a per-thread copy that holds
-the replaced value of each racing word and the current value of the others. The PTX model allows this value: a load
-cannot return a value older than the last write that happens-before it, and no write after the replaced one does.
-Only loads whose destination register overwrites their 64-bit address register are redirected, so the redirection
-leaves no register changed after the load. `SYNCSAN_ADVERSARIAL=control` performs the same redirection with current
-values, to check that the mechanism alone does not change the output.
+`SYNCSAN_ADVERSARIAL=1` changes what racing loads return. Each write records the value it replaces. syncsan removes
+each plain or relaxed global load from the kernel (NVBit's `nvbit_remove_orig`) and performs it itself, then writes the
+destination registers: a word whose load is not ordered after the word's last write gets the value that write replaced,
+and every other word gets what memory holds. The PTX model allows the older value: a load cannot return a value older
+than the last write that happens-before it, and no write after the replaced one does. Loads that directly follow
+another load in flight are left in place, because a call placed there corrupts the earlier load on sm_90.
+`SYNCSAN_ADVERSARIAL=control` performs the same replacement with current values, to check that the mechanism alone does
+not change the output.
 
 ## Limits
 
