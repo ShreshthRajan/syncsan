@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0 (2026-11-23)
+
+- One race record per instruction pair, deduplicated on the GPU. The record buffer used to fill with repeats of the
+  first pairs, so later pairs went unprinted; Hazy now shows 25 pairs, among them the handoff of Megakernels#15.
+- CTA-scope fences (`MEMBAR.ALL.CTA`) no longer count as releases or acquires between blocks.
+- SuperLU_DIST (an incomplete fix) and CUTLASS Stream-K (a known bug, flagged and cleared) results and reproductions.
+
 ## 0.5.0 (2026-11-23)
 
 - Adversarial mode replaces each eligible load and performs it itself, so it covers any plain or relaxed global load,

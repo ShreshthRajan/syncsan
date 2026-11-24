@@ -54,8 +54,25 @@ __device__ void join(const DevState* S, uint32_t* dst, const uint32_t* src, unsi
 
 __device__ __forceinline__ void prof(DevState* S, uint32_t slot, unsigned long long v = 1) { if (S->prof) atomicAdd(S->prof + slot, v); }
 
+__device__ __forceinline__ uint32_t slot_hash(unsigned long long key, uint32_t bits);
+
+// True the first time this (earlier instruction, later instruction, kind) is seen: only then is a record stored. The
+// record buffer used to fill with the first few pairs' repeats (Hazy: 26M records for 7 pairs), so a pair that first
+// raced later was never printed, among them Hazy's up/gate -> down-projection handoff (Megakernels#15).
+__device__ bool first_of_pair(DevState* S, uint32_t a, uint32_t b, uint32_t kind, uint32_t space) {
+  const unsigned long long key = (((unsigned long long)a << 32) | ((unsigned long long)b << 3) | (kind << 1) | space) + 1;
+  const uint32_t mask = (1u << PAIR_BITS) - 1;
+  for (uint32_t p = 0, i = slot_hash(key, PAIR_BITS); p < 64; ++p, i = (i + 1) & mask) {
+    const unsigned long long k = *(volatile unsigned long long*)(S->pairs + i);
+    if (k == key) return false;
+    if (k == 0) { const unsigned long long old = atomicCAS(S->pairs + i, 0ull, key); if (old == 0) return true; if (old == key) return false; }
+  }
+  return true;   // table full: store it anyway
+}
+
 __device__ void report(DevState* S, uint64_t addr, uint32_t iid_prev, uint32_t iid_cur, unsigned long long prev,
                        unsigned long long cur, uint32_t kind) {
+  if (!first_of_pair(S, iid_prev, iid_cur, kind, 0)) return;
   const unsigned int i = atomicAdd(S->n_records, 1u);
   if (i >= MAX_RECORDS) return;
   RaceRecord& r = S->records[i];
@@ -261,6 +278,14 @@ __device__ void shadow_check(DevState* S, uint32_t iid, bool write, bool sync, u
       const unsigned long long held = *(volatile unsigned long long*)&e->reader;
       if (held != cur) { atomicExch(&e->reader, cur); e->reader_iid = iid; __threadfence(); } else { prof(S, PROF_SAME); }
       const unsigned long long pw = *(volatile unsigned long long*)&e->writer;
+      if (S->watch_log && e->writer_iid == S->watch_iid && (pw & VALID)) {
+        const uint32_t k = atomicAdd(S->watch_log, 1u);
+        if (k < 512) {
+          uint32_t* r = S->watch_log + 8 + k * 6;
+          r[0] = iid; r[1] = p_block(pw); r[2] = p_clock(pw); r[3] = block;
+          r[4] = *(volatile const uint32_t*)(clock_of(S, block) + p_block(pw)); r[5] = (pw & F_SYNC) ? 1 : 0;
+        }
+      }
       if ((pw & VALID) && !((pw & F_SYNC) && sync) && !ordered(S, pw, block, wib, epoch)) {
         report(S, a, e->writer_iid, iid, pw, cur, 0u);
         if (S->adversarial && block < S->nb && w < 4) {   // a warp's own load: remember what it may legally read instead
@@ -437,6 +462,7 @@ __device__ SmShadow* sm_shadow_of(DevState* S, unsigned long long key) {
 
 __device__ void sm_report(DevState* S, uint32_t off, uint32_t iid_prev, uint32_t iid_cur, uint32_t b, unsigned long long prev,
                           uint32_t slot, uint32_t kind) {
+  if (!first_of_pair(S, iid_prev, iid_cur, kind, 1)) return;
   const unsigned int i = atomicAdd(S->n_records, 1u);
   if (i >= MAX_RECORDS) return;
   RaceRecord& r = S->records[i];

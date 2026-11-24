@@ -58,6 +58,7 @@ constexpr uint32_t MAX_WARPS = MAX_CTAS * 32;
 constexpr uint64_t POOL_WORDS_MAX = 1ull << 31;      // clocks for release/acquire locations: up to 8 GB, sized at start from
                                                      // free device memory (DevState::pool_words), POOL_WORDS / n of them
 constexpr uint32_t MAX_RECORDS = 1u << 14;
+constexpr uint32_t PAIR_BITS = 16;
 constexpr uint32_t PENDING = 8;
 constexpr uint32_t WPAGE_BITS = 27;                  // hashed 4 KB pages written in this launch (16 MB bitmap)
 constexpr uint32_t TMA_BITS = 12;                    // tensor maps syncsan can decode (a hash table in mapped host memory)
@@ -119,7 +120,11 @@ struct DevState {
   uint32_t* adv_mask;        // [threads]: words of the current load that raced with their last write
   uint32_t* adv_old;         // [threads][4]: those words' previous values
   uint32_t* adv_scratch;     // [threads][4]: where a substituted load reads from
-  unsigned int* adv_count;   // mapped host memory: loads that returned a previous value (readable after the context is gone)
+  unsigned int* adv_count;
+  unsigned long long* pairs;  // [1 << PAIR_BITS]: instruction pairs already recorded (so a flood of one pair can't crowd out the rest)
+  uint32_t watch_iid;        // SYNCSAN_WATCH=<offset>: log every read whose last writer is this instruction (watch_log)
+  uint32_t* watch_log;       // mapped: [0] count, then [count][6] reader iid, writer block, writer clock, reader block, what the reader's clock holds of the writer, writes seen
+   // mapped host memory: loads that returned a previous value (readable after the context is gone)
   uint32_t* warp_agent;      // [MAX_WARPS]: the latest of its block's agent clock each warp has waited for
   struct TmaDesc* tma;       // [1 << TMA_BITS], keyed by the hash of the 128-byte CUtensorMap
   uint32_t n;                // the length of every clock: nb block slots, then (when nb <= AGENT_MAX_BLOCKS) nb agent slots

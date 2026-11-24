@@ -4,7 +4,7 @@ title: "syncsan: happens-before race detection and adversarial weak-memory execu
 authors:
   - family-names: Rajan
     given-names: Shreshth
-version: 0.5.0
+version: 0.6.0
 date-released: 2026-11-23
 license: Apache-2.0
 repository-code: "https://github.com/ShreshthRajan/syncsan"

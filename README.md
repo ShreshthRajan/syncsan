@@ -9,8 +9,10 @@ which the PTX model still allows it to return. A race then becomes a wrong outpu
 ## Example: Hazy Research's Llama-1B megakernel
 
 The [low-latency Llama megakernel](https://github.com/HazyResearch/Megakernels) hands activations between SMs with a
-TMA store, a relaxed `atomicAdd` on a counter, a `volatile` spin and a read. The kernel contains no memory fence, so
-the PTX model does not order the read after the store. syncsan reports 7 racing instruction pairs on H100 and B200. On
+TMA store, a relaxed `atomicAdd` on a counter, a `volatile` spin and a read, with no gpu-scope fence, so the PTX model
+does not order the read after the store. syncsan reports 25 racing instruction pairs in one run, covering these
+handoff: Q, K and V into attention, attention output into o_proj, `silu_out` into the down-projection, and the residual
+stream into the next RMS norm. On
 an H100, 8 tokens:
 
 | Build | Mode | Loads given an older value | Output |
@@ -24,9 +26,9 @@ The wrong text changes from run to run (another run printed "wedchuntghtunday造
 The control run redirects the same loads but hands them their current values, which rules out the redirection itself
 as the cause. Making the counters `red.release.gpu` and `ld.acquire.gpu` removes every report and
 costs about 9% in latency. The analysis and the fix are in [docs/hazy-megakernel.md](docs/hazy-megakernel.md) and in
-[HazyResearch/Megakernels#16](https://github.com/HazyResearch/Megakernels/issues/16). The adversarial run shows that the
-output depends on an ordering the PTX model does not promise; it does not show that current hardware produces the
-wrong text.
+[HazyResearch/Megakernels#16](https://github.com/HazyResearch/Megakernels/issues/16). The same missing release/acquire
+was found earlier by hand in [#15](https://github.com/HazyResearch/Megakernels/issues/15), on the up/gate to
+down-projection handoff, where it changes tokens in 2.6% of generations on real H100s.
 
 ## Example: AutoMegaKernel
 
@@ -93,6 +95,16 @@ syncsan detects all six and compute-sanitizer none. syncsan does not check races
 distributed shared memory, or ordering between kernels, streams and host copies.
 
 ## Other results
+
+**SuperLU_DIST.** The GPU triangular solve's fix for a dropped fence (commit 587f38f) restored the consumer's acquire
+but left the producer's release out: syncsan still reports 4 racing pairs, adversarial mode gives a wrong solution
+(error about 0.7), and one `__threadfence()` before the producer's `atomicSub` clears both. The original bug (4755a5e) is
+flagged at the same lines and fails natively. Details in [docs/superlu.md](docs/superlu.md).
+
+**CUTLASS Stream-K.** On CUTLASS issue #2027, syncsan reports the known race between the middle split's `atomicAdd`
+and the final split's read in 3.6.0, which fails natively, and nothing in the fixed 3.7.0. Details in
+[docs/cutlass-streamk.md](docs/cutlass-streamk.md).
+
 
 syncsan found an admission race in the [Magni VM](https://github.com/Bobliuuu/mvm) megakernel in one run, after 3,200
 test runs had passed; the fix is submitted as [Bobliuuu/mvm#97](https://github.com/Bobliuuu/mvm/pull/97). CUB's

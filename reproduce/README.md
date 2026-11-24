@@ -11,3 +11,11 @@ $4 an hour there.
   with an acquire in its counter wait (about 15 minutes). The table in [docs/automegakernel.md](../docs/automegakernel.md)
   comes from this script.
 - `patch_hazy.py DIR fences|acqrel` writes the two fixes into a copy of `demos/low-latency-llama`.
+- `modal_superlu.py` builds SuperLU_DIST at the buggy commit, the official fix and the fix plus a producer fence, and
+  runs the GPU triangular solve natively, under syncsan, in adversarial mode and under the control (about 30 minutes).
+  The table in [docs/superlu.md](../docs/superlu.md) comes from this script.
+- `modal_cutlass.py` builds CUTLASS 3.6.0 and 3.7.0 with the reproducer from issue #2027 and runs it natively and under
+  syncsan. The table in [docs/cutlass-streamk.md](../docs/cutlass-streamk.md) comes from this script.
+- `hazy_witness.py` is the native canary test in [docs/hazy-megakernel.md](../docs/hazy-megakernel.md): run it in place
+  of `megakernels/scripts/generate.py`, with `CANARY=silu_out` or `CANARY=attn_out`, inside the image `modal_hazy.py`
+  builds.

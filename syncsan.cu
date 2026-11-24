@@ -37,6 +37,7 @@ static bool g_shared = true;
 static bool g_adv = false, g_adv_control = false;   // SYNCSAN_ADVERSARIAL=1 | control
 static uint64_t g_adv_sites = 0, g_adv_emul = 0;
 static unsigned int* g_adv_count_host = nullptr;
+static uint32_t* g_watch_host = nullptr; static unsigned g_watch_off = 0; static bool g_watch = false;
 static uint32_t g_first_nb = 1;   // blocks in the first instrumented launch (sizes the shared shadow)
 static bool g_check_nc = false, g_async_tma = true, g_async_bulk = true, g_async_wait = true;
 static uint32_t g_sample = 1, g_sample_seed = 0;
@@ -67,6 +68,7 @@ void nvbit_at_init() {
   if (const char* ip = getenv("SYNCSAN_IPOINT")) g_after = !strcmp(ip, "after");
   g_check_nc = getenv("SYNCSAN_CHECK_NC") != nullptr;
   if (const char* sh = getenv("SYNCSAN_SHARED")) g_shared = strcmp(sh, "0") != 0;
+  if (const char* wv = getenv("SYNCSAN_WATCH")) { g_watch = true; g_watch_off = (unsigned)strtoul(wv, nullptr, 16); }
   g_adv = getenv("SYNCSAN_ADVERSARIAL") && strcmp(getenv("SYNCSAN_ADVERSARIAL"), "0");
   g_adv_control = g_adv && !strcmp(getenv("SYNCSAN_ADVERSARIAL"), "control");
   if (const char* a = getenv("SYNCSAN_ASYNC")) { g_async_tma = strstr(a, "tma"); g_async_bulk = strstr(a, "bulk"); g_async_wait = strstr(a, "wait"); }
@@ -104,6 +106,8 @@ static void alloc_state() {
   CK(cudaMalloc(&g_host.joined_ver, sizeof(uint32_t) * MAX_CTAS * 1024));
   CK(cudaMalloc(&g_host.pool_used, sizeof(unsigned int)));
   CK(cudaMalloc(&g_host.warp_agent, sizeof(uint32_t) * MAX_WARPS));
+  CK(cudaMalloc(&g_host.pairs, sizeof(unsigned long long) << PAIR_BITS));
+  CK(cudaMemset(g_host.pairs, 0, sizeof(unsigned long long) << PAIR_BITS));
   if (g_adv) {
     g_host.adversarial = g_adv_control ? 2 : 1;
     CK(cudaHostAlloc(&g_adv_count_host, sizeof(unsigned int), cudaHostAllocMapped));
@@ -141,6 +145,12 @@ static void alloc_state() {
   CK(cudaHostGetDevicePointer((void**)&d.n_sync_dropped, g_host.n_sync_dropped, 0));
   CK(cudaHostGetDevicePointer((void**)&d.tma, g_host.tma, 0));
   if (g_adv_count_host) CK(cudaHostGetDevicePointer((void**)&d.adv_count, g_adv_count_host, 0));
+  if (g_watch) {
+    CK(cudaHostAlloc(&g_watch_host, sizeof(uint32_t) * (8 + 512 * 6), cudaHostAllocMapped));
+    memset(g_watch_host, 0, sizeof(uint32_t) * (8 + 512 * 6));
+    CK(cudaHostGetDevicePointer((void**)&d.watch_log, g_watch_host, 0));
+    d.watch_iid = 0xFFFFFFFFu;
+  }
   if (getenv("SYNCSAN_PROFILE")) {   // mapped host memory, like the records: readable at exit after the context is gone
     CK(cudaHostAlloc(&g_host.prof, sizeof(unsigned long long) * PROF_N, cudaHostAllocMapped));
     memset(g_host.prof, 0, sizeof(unsigned long long) * PROF_N);
@@ -255,6 +265,12 @@ static std::map<uint32_t, std::string> inline_chains(CUcontext ctx, CUfunction f
   return out;
 }
 
+static void set_watch(uint32_t iid, const InstrInfo& info) {   // the device field, written in place
+  if (!g_dev) return;
+  CK(cudaMemcpy((char*)g_dev + offsetof(DevState, watch_iid), &iid, sizeof iid, cudaMemcpyHostToDevice));
+  fprintf(stderr, "syncsan: watching reads last written by [%u] %s %s\n", iid, info.sass.c_str(), info.where.c_str());
+}
+
 static bool is_full_barrier(const std::string& op) {   // a CTA barrier a warp waits at: BAR.SYNC / BAR.RED (any id, any count)
   return op.rfind("BAR.", 0) == 0 && (op.find(".SYNC") != std::string::npos || op.find(".RED") != std::string::npos);
 }
@@ -332,6 +348,10 @@ static void instrument(CUcontext ctx, CUfunction kernel) {
       const bool membar = op.rfind("MEMBAR", 0) == 0, cctl = op.rfind("CCTL", 0) == 0 && op.find("IVALL") != std::string::npos;
       if (membar || cctl) {
         if (!g_do_fence) continue;
+        // A CTA-scope fence (MEMBAR.ALL.CTA, MEMBAR.SC.CTA: fence.cta, the fences around __syncwarp-style code) orders
+        // nothing for another block, so it makes neither a release nor an acquire between blocks. Treating it as one
+        // hid Hazy's up/gate -> down-projection race (HazyResearch/Megakernels#15).
+        if (membar && op.find(".CTA") != std::string::npos) continue;
         if (g_verbose > 1) fprintf(stderr, "syncsan:   fence %s\n", in->getSass());
         nvbit_insert_call(in, "syncsan_fence", IPOINT_AFTER);
         nvbit_add_call_arg_guard_pred_val(in);
@@ -420,6 +440,7 @@ static void instrument(CUcontext ctx, CUfunction kernel) {
           if (nvbit_get_line_info(ctx, f, in->getOffset(), &file, &dir, &line)) info.where = std::string(file) + ":" + std::to_string(line);
           if (chains.count(in->getOffset())) info.where = chains[in->getOffset()];
           g_instrs.push_back(info);
+          if (g_watch && in->getOffset() == g_watch_off) set_watch(iid, info);
           return iid;
         };
         if (op.rfind("UTMA", 0) == 0) {
@@ -782,6 +803,19 @@ void nvbit_at_term() {
     fprintf(stderr, "syncsan: ADVERSARIAL%s %llu load sites eligible (%llu replaced), %u loads %s\n", g_adv_control ? " (control)" : "",
             (unsigned long long)g_adv_sites, (unsigned long long)g_adv_emul, g_adv_count_host ? *g_adv_count_host : 0u,
             g_adv_control ? "raced (given their current values)" : "returned the value before a racing write");
+  }
+  if (g_watch_host) {
+    const uint32_t n = std::min(g_watch_host[0], 512u);
+    fprintf(stderr, "syncsan: WATCH %u reads of words last written by the watched instruction\n", g_watch_host[0]);
+    std::map<std::tuple<uint32_t, uint32_t, uint32_t>, int> agg;   // reader iid, ordered?, sync
+    for (uint32_t i = 0; i < n; ++i) {
+      const uint32_t* r = g_watch_host + 8 + i * 6;
+      agg[std::make_tuple(r[0], r[4] >= r[2] ? 1u : 0u, r[5])]++;
+      if (i < 12) fprintf(stderr, "syncsan: WATCH read by [%u] %s in block %u: writer slot %u clock %u, reader's clock holds %u\n",
+                          r[0], g_instrs[r[0]].where.c_str(), r[3], r[1], r[2], r[4]);
+    }
+    for (auto& kv : agg) fprintf(stderr, "syncsan: WATCH reader [%u] %s: %d reads, %s\n", std::get<0>(kv.first), g_instrs[std::get<0>(kv.first)].where.c_str(),
+                                 kv.second, std::get<1>(kv.first) ? "ordered by the clock" : "unordered");
   }
   if (g_tma_maps || g_tma_skipped)
     fprintf(stderr, "syncsan: %llu tensor maps decoded for TMA checks, %llu not (unsupported layout)\n",
