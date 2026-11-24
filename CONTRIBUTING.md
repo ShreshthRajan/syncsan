@@ -9,6 +9,6 @@ Before sending a change to the tool, run the known-answer cases on a GPU of comp
 NVBIT_ROOT=/path/to/nvbit_release_x86_64 tests/run_tests.sh sm_90
 ```
 
-or, without a local GPU, `modal run reproduce/modal_cases.py`. All 37 cases must pass. A change that adds a pattern
+or, without a local GPU, `modal run reproduce/modal_cases.py`. Every check must pass. A change that adds a pattern
 syncsan should catch, or should stop reporting, adds a racy case and a clean case to `tests/race_cases.cu` and
 `tests/run_tests.sh`.
