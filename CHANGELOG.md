@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.9.0 (2026-11-24)
+
+- Warp-level ordering between blocks (launches of up to 320 blocks): a release by one thread publishes another warp's
+  accesses only if that warp synchronized with it first, and an acquire by one thread orders another warp's reads only
+  through a barrier or mbarrier. A missing `__syncthreads()` before a one-thread flag store, or after a one-thread
+  acquire, is now reported; block-level clocks missed both (`tests/race_cases.cu` `mp_block_*`). Warps of one block are
+  ordered by the shared clocks (full and named barriers, mbarriers) in global memory too. `SYNCSAN_WARP_ORDER=0` keeps
+  the old per-block clocks.
+- Adversarial mode enforces what it can of its legality conditions: a store smaller than 4 bytes voids the word's
+  recorded value, a record read while it changes is left alone, `--sample` is ignored, the exit summary counts
+  substituted words whose last write had another access width, and a warning names unseen writes. Adversarial and control cases in
+  `tests/run_tests.sh`.
+- Fixed: with `SYNCSAN_SHARED=0` the per-launch reset failed and nothing was checked (introduced and fixed during 0.9
+  development; covered by a new test).
+- Reruns on 0.9 with shared-memory checking on: Hazy (26 pairs, one shared-memory pair unexplained; every substituted
+  word was last written by an access of another width), AutoMegaKernel (unchanged), cuHadron (unchanged: 9 of 21, the six scopedsync tests, 0
+  false positives on single-GPU fixed builds), Lucebox on RTX 5090 (72 pairs, adversarial wrong, all same-size).
+  Summaries in `results/*_0.9_*`.
+- Daytona runners for the tests, Hazy, AutoMegaKernel, cuHadron, Magni VM, Lucebox and megakernel-zoo.
+
 ## 0.8.1 (2026-11-24)
 
 Documentation corrections after a review against the run logs.

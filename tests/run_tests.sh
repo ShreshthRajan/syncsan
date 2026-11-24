@@ -1,10 +1,10 @@
 #!/bin/bash
 # Build syncsan and its known-answer cases, run each case under the tool, and compare the count of RACE reports.
-# Usage (on a machine with an NVIDIA GPU, after `syncsan build` or with NVBIT_ROOT set): tests/run_tests.sh [sm_90]
+# Usage (on a machine with an NVIDIA GPU, after `syncsan build` or with NVBIT_ROOT set): tests/run_tests.sh [sm_80]
 set -uo pipefail
 cd "$(dirname "$0")/.."
 NVBIT_ROOT="${NVBIT_ROOT:-${SYNCSAN_HOME:-$HOME/.cache/syncsan}/nvbit_release_x86_64}"   # where `syncsan build` puts NVBit
-ARCH="${1:-sm_90}"   # the TMA, bulk-copy and mbarrier cases need sm_90 or newer
+ARCH="${1:-sm_80}"
 cmake -S . -B build -DNVBIT_ROOT="$NVBIT_ROOT" -DNVBIT_TOOL_CUDA_ARCHITECTURES="${ARCH#sm_}" > build.log 2>&1 && cmake --build build -j >> build.log 2>&1 || { tail -40 build.log; exit 1; }
 nvcc -O2 -arch="$ARCH" -lineinfo -o build/race_cases tests/race_cases.cu -lcuda || exit 1
 fail=0
@@ -50,6 +50,29 @@ check cpasync_smem_racy racy
 check cpasync_smem_waited clean
 check bulk_store_smem_racy racy
 check bulk_store_smem_waited clean
+
+# a release or acquire by one thread covers the other warps of its block only across a barrier
+check mp_block_barriers clean
+check mp_block_no_producer_barrier racy
+check mp_block_no_consumer_barrier racy
+
+# adversarial mode: what out[0] must hold (a racing load gets the value before the write; an ordered one, the current
+# value; a load after the thread's own sub-word store is left alone), and the control leaves every value current
+adv() {  # case mode(1|control) expected-out0
+  out=$(SYNCSAN_ADVERSARIAL=$2 LD_PRELOAD=$PWD/build/syncsan.so build/race_cases "$1" 2>&1)
+  got=$(sed -n 's/.*out\[0\] = \(-\{0,1\}[0-9]*\).*/\1/p' <<< "$out" | tail -1)
+  if [ "$got" = "$3" ]; then echo "PASS adversarial=$2 $1 (out[0] = $got)"; else echo "FAIL adversarial=$2 $1 (out[0] = $got, expected $3)"; echo "$out" | tail -8; fail=1; fi
+}
+adv adv_mp_relaxed 1 0
+adv adv_mp_acquire 1 1
+adv adv_mp_relaxed control 1
+adv adv_subword 1 30583
+
+# global checks with shared-memory checking off (SYNCSAN_SHARED=0) and with block-level clocks (SYNCSAN_WARP_ORDER=0)
+for env in SYNCSAN_SHARED=0 SYNCSAN_WARP_ORDER=0; do
+  n=$(env $env LD_PRELOAD=$PWD/build/syncsan.so build/race_cases mp_relaxed_flag 2>&1 | grep -c "syncsan: RACE")
+  if [ "$n" -gt 0 ]; then echo "PASS $env mp_relaxed_flag ($n reports, expected racy)"; else echo "FAIL $env mp_relaxed_flag (0 reports, expected racy)"; fail=1; fi
+done
 
 # two kernels at once on two streams: the first is checked, the second runs unchecked, and no race is reported
 nvcc -O2 -arch="$ARCH" -lineinfo -o build/concurrent_streams tests/concurrent_streams.cu || exit 1

@@ -16,8 +16,9 @@ A producer's storer lane writes its output with a TMA store, waits for the store
 increments a counter with `atomicAdd`. A consumer's lane spins on the counter with a `volatile` load and then reads the
 data with a TMA load, a `cp.async` or a plain `ld.global.v4`. The `atomicAdd` is relaxed, the spin load is not followed
 by a fence, and the compiled kernel contains no `MEMBAR`, so nothing orders the consumer's reads after the TMA engine's
-writes. syncsan reports 25 racing instruction pairs in a 4-token run on H100, with global memory checked
-(`SYNCSAN_SHARED=0`), for example:
+writes. syncsan 0.9 reports 26 racing instruction pairs in an 8-token run on H100: 25 in global memory, for example the
+ones below, and one write-write pair in shared memory (a `STS` against a TMA load into the same buffer) that is also
+reported in the fixed build and is not yet explained:
 
 | Write | Read |
 |---|---|
@@ -33,21 +34,26 @@ handoff unordered, and syncsan still reports it.
 
 ## What the output depends on
 
-In adversarial mode each racing load returns the value its word held before the last write, which the PTX model allows
-because no happens-before edge orders the load after that write. `attn_out` is rewritten every layer, so for the o_proj
-read the older value is the previous layer's attention output. 8 tokens on an H100:
+In adversarial mode each racing load returns the value its word held before the last write. Hazy's handoffs are TMA box
+stores read by 16-byte loads, so every substituted word was last written by an access of another width. PTX models
+vector and bulk accesses as accesses of their element type, which the machine code does not show, so syncsan cannot tell
+whether these are uniform-size races (where the model allows the stale value) or mixed-size ones (where it defines no
+outcome). The wrong output below shows that the races lie on the data path to the output; the evidence that they matter
+on hardware is #15's native measurement. `attn_out` is rewritten every layer, so for the o_proj read the older value is
+the previous layer's attention output. 8 tokens on an H100:
 
 | Build | Mode | Loads given an older value | Output |
 |---|---|---|---|
 | original | native | | "Why did the cookie go to the" |
-| original | adversarial | 13.2M | " insideuccarnochumptlink circular" |
-| original | control (same redirection, current values) | 13.2M | "Why did the cookie go to the" |
+| original | adversarial | 14.9M | "iteriteriter abstractجرineronde" |
+| original | control (same redirection, current values) | 14.9M | "Why did the cookie go to the" |
 | release/acquire counters | adversarial | 0 | "Why did the cookie go to the" |
 
-The wrong text differs between runs, because which loads race depends on timing; an earlier run printed
-"wedchuntghtunday造成uarios". The TMA and `cp.async.cg` reads go through L2, which is coherent across SMs, and are less
-exposed on current hardware. The `ld.global.v4` can be served from the reading SM's L1, which is not coherent, if that
-SM still holds lines of `attn_out` from an earlier layer of the same launch. No wrong output has been observed natively.
+The wrong text differs between runs, because which loads race depends on timing; earlier runs printed "
+insideuccarnochumptlink circular" and "wedchuntghtunday造成uarios". The TMA and `cp.async.cg` reads go through L2, which
+is coherent across SMs, and are less exposed on current hardware. The `ld.global.v4` can be served from the reading SM's
+L1, which is not coherent, if that SM still holds lines of `attn_out` from an earlier layer of the same launch. No wrong
+output has been observed natively.
 
 A native run with no instrumentation, using #15's method, fills `silu_out` with 1e4 before every decode step and counts
 generations outside the two token sequences both builds produce most often: 43 of 300 for the original against 6 of 300

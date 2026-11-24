@@ -1,0 +1,33 @@
+From c80010d0cf595cf4ca4772c0864c17ee52d683c3 Mon Sep 17 00:00:00 2001
+From: Shreshth Rajan <ShreshthRajan@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 14:48:07 -0500
+Subject: [PATCH 2/2] exec: barrier after staging whether or not slots recycle
+
+With no_recycle and a record staged after launch, the successor pass read
+words of S.stage that other threads of the admitting block had not stored
+yet: the only barrier between the copy and the reads sat inside the
+free-ring pop, which no_recycle skips. A late word holds whatever the
+buffer held before (BAD_TASK, a wrong successor, or a stall until TIMEOUT).
+The CLI prestages one-record runs, so it never took this path; library
+users setting no_recycle and bench/hop/chainprof did.
+---
+ include/mvm_exec.cuh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/mvm_exec.cuh b/include/mvm_exec.cuh
+index 8a5e87a..fe42df7 100644
+--- a/include/mvm_exec.cuh
++++ b/include/mvm_exec.cuh
+@@ -904,8 +904,8 @@ __device__ void mvm_admit_record(const MvmDevState& S, MvmWatch& t0, MvmAdmitSha
+         st_rel64(&cell->seq, fp + (unsigned long long)S.nslots);
+       }
+     }
+-    __syncthreads();
+   }
++  __syncthreads();   // the staged record and adm_slots were written across the block; the passes below read them at other threads' indices
+   const unsigned long long now = S.trace_on ? mvm_now() : 0ull;
+   const unsigned wid = A.win_next;
+   // An aliased ring (S.succ_alias) is only this record's own successor words, read in place: valid for the first record at ring offset 0 with nothing recycled.
+-- 
+2.41.0
+

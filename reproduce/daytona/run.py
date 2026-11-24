@@ -1,7 +1,7 @@
 """Run a bash script on a Daytona GPU sandbox with the syncsan tree at /work/syncsan, then download /work/out.
 
     pip install "daytona[v0-sdk]"
-    DAYTONA_API_KEY=... python reproduce/daytona/run.py [--gpu H100] [--image IMAGE] [--name tag] [--keep] SCRIPT.sh [ARGS...]
+    DAYTONA_API_KEY=... python reproduce/daytona/run.py [--gpu H100|RTX-5090|none] [--image IMAGE] [--name tag] [--keep] SCRIPT.sh [ARGS...]
 
 The script's output streams to results/<name>_<time>/run.log; everything the script writes under /work/out is
 downloaded to that folder. The sandbox is deleted at the end unless --keep.
@@ -52,13 +52,14 @@ if a.sandbox:
     sb.wait_for_sandbox_start(timeout=0)
 else:
     sb = d.create(CreateSandboxFromImageParams(image=a.image, auto_delete_interval=0, auto_stop_interval=0,
-                                               resources=Resources(cpu=8, memory=a.mem, disk=200, gpu=1, gpu_type=[GpuType(a.gpu)])),
+                                               resources=Resources(cpu=4, memory=8, disk=10) if a.gpu == "none" else
+                                               Resources(cpu=8, memory=a.mem, disk=200, gpu=1, gpu_type=[GpuType(a.gpu)])),
                   timeout=0)
 say(f"sandbox {sb.id} up after {time.time() - t0:.0f} s")
 try:
     sb.fs.upload_file(buf.getvalue(), "/tmp/tree.tgz")
     sb.fs.upload_file(pathlib.Path(a.script).read_bytes(), "/tmp/job.sh")
-    sb.process.exec("rm -rf /work/out /work/syncsan/daytona /work/syncsan/luce /work/syncsan/zoo; mkdir -p /work/out && tar xzf /tmp/tree.tgz -C /work", timeout=600)
+    sb.process.exec("rm -rf /work/out /work/syncsan; mkdir -p /work/out && tar xzf /tmp/tree.tgz -C /work", timeout=600)
     sess = "job%d" % int(time.time())
     sb.process.create_session(sess)
     cmd = "cd /work && bash /tmp/job.sh " + " ".join(a.args) + " > /work/out/job.log 2>&1; echo EXIT $? >> /work/out/job.log"

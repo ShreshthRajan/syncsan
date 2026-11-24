@@ -15,9 +15,9 @@ for m in ${MODES//,/ }; do
   step "$m (fix=$FIX)"
   case $m in
     native) env DRIVE_HF=1 $D /tmp/ref.pt 2>&1 | grep -E "DRIVE|Error"; $D /tmp/n2.pt /tmp/ref.pt 2>&1 | grep -E "DRIVE|Error";;
-    syncsan) env $T $D /tmp/s.pt /tmp/ref.pt 2>&1 | grep -E "DRIVE|distinct racing|WARNING|Error";;
-    adversarial) env $T SYNCSAN_ADVERSARIAL=1 $D /tmp/a.pt /tmp/ref.pt 2>&1 | grep -E "DRIVE|distinct racing|ADVERSARIAL|Error";;
-    control) env $T SYNCSAN_ADVERSARIAL=control $D /tmp/c.pt /tmp/ref.pt 2>&1 | grep -E "DRIVE|distinct racing|ADVERSARIAL|Error";;
+    syncsan) env $T $D /tmp/s.pt /tmp/ref.pt 2>&1 | tee /work/out/zoo_syncsan.log | grep -E "DRIVE|distinct racing|WARNING|Error";;
+    adversarial) env $T SYNCSAN_ADVERSARIAL=1 $D /tmp/a.pt /tmp/ref.pt 2>&1 | tee /work/out/zoo_adversarial.log | grep -E "DRIVE|distinct racing|ADVERSARIAL|Error";;
+    control) env $T SYNCSAN_ADVERSARIAL=control $D /tmp/c.pt /tmp/ref.pt 2>&1 | tee /work/out/zoo_control.log | grep -E "DRIVE|distinct racing|ADVERSARIAL|Error";;
     stress) python /work/syncsan/reproduce/zoo/stress.py $ENGINE /models/qwen3-8b $NTOK $REPS 2>&1 | grep -E "STRESS|Error";;
   esac
 done

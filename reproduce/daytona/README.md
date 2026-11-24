@@ -13,4 +13,10 @@ lower tiers reach only allow-listed hosts, and `pypi.nvidia.com` is not one of t
   `reset` or `both`). The RTX 5090 rows in [docs/lucebox.md](../../docs/lucebox.md):
   `python reproduce/daytona/run.py --gpu RTX-5090 --image pytorch/pytorch:2.11.0-cuda12.8-cudnn9-devel reproduce/daytona/luce.sh native,stress,syncsan,adversarial,control none 16 20000`.
 - `zoo.sh MODES FIX NTOK REPS` runs megakernel-zoo's Qwen3-8B engine the same way (H100).
+- `tests_job.sh` runs the known-answer tests; `compile_check.sh` builds everything on a CPU sandbox (`--gpu none`).
+- `hazy_amk.sh` reruns AutoMegaKernel (and Hazy); `hazy_only.sh` reruns Hazy with shared-memory checking on, and shows
+  the block-wide cases under both clock models.
+- `cuhadron.sh` runs cuHadron with the scopedsync category under syncsan and compute-sanitizer; `magni.sh` runs the
+  Magni VM stage suite before and after the fix (patches in `reproduce/magni/`).
+- `luce_rerun.sh` and `zoo_rerun.sh` rerun Lucebox and megakernel-zoo on the current version.
 - `concurrent_test.sh` runs the two-stream regression test and the known-answer cases.

@@ -46,6 +46,36 @@ __device__ __forceinline__ uint32_t p_warp(unsigned long long p) { return p_bloc
 // block share the row, and are ordered among themselves by barrier epochs.
 __device__ __forceinline__ uint32_t* clock_of(const DevState* S, uint32_t block) { return S->vc + (size_t)block * S->n; }
 
+// Warp-level ordering between blocks (S->wo). A warp's own entry of its block's shared clock (own_s) stamps each of its
+// global accesses. Each warp has its own row of what it has acquired (wrow), carried to other warps by barriers and
+// mbarriers. Each release of block b records, for the block clock value k it publishes, how far each warp's accesses are
+// ordered before it (relcov): its own, and other warps' up to what the releasing warp has synchronized with.
+__device__ __forceinline__ uint32_t* sm_row(const DevState* S, uint32_t b, uint32_t slot);
+__device__ __forceinline__ uint32_t own_s(const DevState* S, uint32_t b, uint32_t w) {
+  return S->sm_vc ? *(volatile const uint32_t*)(sm_row(S, b, w) + w) : 0;
+}
+__device__ __forceinline__ uint32_t* wrow_of(const DevState* S, uint32_t b, uint32_t w) { return S->wrow + ((size_t)b * 32 + w) * S->n; }
+__device__ __forceinline__ uint32_t* relcov_of(const DevState* S, uint32_t b, uint32_t k) {
+  return S->relcov + ((size_t)b * WO_RELH + k % WO_RELH) * WO_COV;
+}
+__device__ void join1(const DevState* S, uint32_t* dst, const uint32_t* src) {   // one thread
+  for (uint32_t i = 0; i < S->n; ++i) { const uint32_t v = *(volatile const uint32_t*)(src + i); if (v) atomicMax(dst + i, v); }
+}
+// Warp R of block b published block clock value k. Coverage is cumulative over the block's releases (an approximation
+// that can hide a race); when the previous release's record was overwritten, every warp counts as covered.
+__device__ void rel_cover(const DevState* S, uint32_t b, uint32_t R, uint32_t k) {
+  uint32_t* c = relcov_of(S, b, k);
+  if (*(volatile uint32_t*)(c + 32) != k + 1) {
+    const uint32_t* p = relcov_of(S, b, k - 1);
+    const bool fresh = k <= 1, chain = !fresh && *(volatile const uint32_t*)(p + 32) == k;
+    for (uint32_t w = 0; w < 32; ++w) c[w] = fresh ? 0u : chain ? *(volatile const uint32_t*)(p + w) : 0xFFFFFFFFu;
+    __threadfence();
+    *(volatile uint32_t*)(c + 32) = k + 1;
+  }
+  const uint32_t* r = sm_row(S, b, R);
+  for (uint32_t w = 0; w < 32; ++w) atomicMax(c + w, *(volatile const uint32_t*)(r + w));
+}
+
 // Join src into dst entrywise, by the lanes in `lanes` working together (each takes every 32nd entry).
 __device__ void join(const DevState* S, uint32_t* dst, const uint32_t* src, unsigned lanes) {
   const uint32_t lane = get_laneid(), rank = __popc(lanes & ((1u << lane) - 1)), width = __popc(lanes);
@@ -129,14 +159,28 @@ __device__ __forceinline__ uint32_t* clock_at(const DevState* S, const SyncEntry
 
 // Same block: another warp's access is ordered only by a barrier in between (a different epoch). Another block: by an
 // edge that brought its clock into this block's row.
-__device__ __forceinline__ bool ordered(const DevState* S, unsigned long long prev, uint32_t block, uint32_t wib, uint32_t epoch) {
+__device__ __forceinline__ bool ordered(const DevState* S, unsigned long long prev, uint32_t prev_s, uint32_t block, uint32_t wib,
+                                        uint32_t epoch) {
   const uint32_t pb = p_block(prev);
-  if (pb == block) return p_wib(prev) == wib || p_epoch(prev) != epoch;
+  if (pb == block) {
+    if (p_wib(prev) == wib) return true;
+    // warps of one block: by the shared clocks (full and named barriers, mbarriers) when they are on, else barrier epochs
+    if (S->wo && block < S->nb && prev_s) return *(volatile const uint32_t*)(sm_row(S, block, wib) + p_wib(prev)) >= prev_s;
+    return p_epoch(prev) != epoch;
+  }
   // A copy (block = an agent slot, wib/epoch = the issuing warp's) against an earlier access by its own block: ordered after
   // it as the issuing warp is, by program order or a barrier in between.
   if (block >= S->nb && pb == block - S->nb) return p_wib(prev) == wib || p_epoch(prev) != epoch;
   if (pb == S->nb + block && block < S->nb &&           // this block's copy agent: this warp may have waited on it itself
       *(volatile const uint32_t*)(S->warp_agent + block * 32 + wib) >= p_clock(prev)) return true;
+  if (S->wo && block < S->nb && pb < S->nb && prev_s) {
+    // this warp must have acquired a release of pb at or after the access, and that release must cover the accessing warp
+    const uint32_t v = *(volatile const uint32_t*)(wrow_of(S, block, wib) + pb);
+    if (v < p_clock(prev)) return false;
+    const uint32_t* c = relcov_of(S, pb, v);
+    if (*(volatile const uint32_t*)(c + 32) == v + 1 && *(volatile const uint32_t*)(c + p_wib(prev)) < prev_s) return false;
+    return true;
+  }
   return (*(volatile const uint32_t*)(clock_of(S, block) + pb) & CLOCK_MASK) >= p_clock(prev);
 }
 
@@ -168,9 +212,12 @@ extern "C" __device__ __noinline__ void syncsan_fence(int pred, uint32_t kind, u
   if (kind == FENCE_SC) {                               // SC fences synchronize in their total order: join the SC clock, then publish
     const unsigned lanes = __activemask();
     if (get_laneid() == (unsigned)(__ffs(lanes) - 1)) { prof(S, PROF_SC); prof(S, PROF_JOIN_ENTRIES, 2ull * S->n); }
-    uint32_t* mine = clock_of(S, linear_cta(S));
+    const uint32_t b = linear_cta(S), wib = linear_tid() >> 5;
+    uint32_t* mine = clock_of(S, b);
     join(S, mine, S->sc_clock, lanes);
+    if (S->wo) join(S, wrow_of(S, b, wib), S->sc_clock, lanes);
     __syncwarp(lanes);
+    if (S->wo && get_laneid() == (unsigned)(__ffs(lanes) - 1)) rel_cover(S, b, wib, *(volatile uint32_t*)(mine + b));
     join(S, S->sc_clock, mine, lanes);
     __threadfence();
     __syncwarp(lanes);
@@ -188,21 +235,28 @@ extern "C" __device__ __noinline__ void syncsan_fence(int pred, uint32_t kind, u
       if (S->joined_slot[t] == e->slot + 1 && S->joined_ver[t] == ver) { prof(S, PROF_ACQ_SKIP); continue; }   // spin-polling: nothing new to join
       prof(S, PROF_ACQ_JOIN); prof(S, PROF_JOIN_ENTRIES, S->n);
       for (uint32_t i = 0; i < S->n; ++i) { const uint32_t v = c[i]; if (v) atomicMax(mine + i, v); }
+      if (S->wo) join1(S, wrow_of(S, linear_cta(S), linear_tid() >> 5), c);   // what this warp itself has acquired
       S->joined_slot[t] = e->slot + 1; S->joined_ver[t] = ver;
     }
   }
 }
 
 __device__ void shadow_check(DevState* S, uint32_t iid, bool write, bool sync, uint32_t size, uint64_t addr, uint32_t block,
-                             uint32_t wib, uint32_t epoch, uint32_t clock);
+                             uint32_t wib, uint32_t epoch, uint32_t clock, uint32_t s = 0);
 __device__ void sm_access(DevState* S, uint32_t iid, bool write, bool sync, uint32_t size, uint32_t off);
 
 __device__ __forceinline__ void check_access(DevState* S, uint32_t iid, uint32_t flags, uint32_t size, uint64_t addr) {
-  if (size < 4) return;               // sub-word accesses are not tracked
+  if (size < 4) {                     // sub-word accesses are not tracked; in adversarial mode a store marks the word's
+    // recorded previous value as unusable, because a later load must not return a value from before this store
+    if (S->adversarial && (flags & ACC_WRITE) && !(flags & ACC_SHARED) &&
+        (!(flags & ACC_GENERIC) || __isGlobal((const void*)addr)))
+      if (ShadowEntry* e = shadow_of(S, addr >> 2)) atomicOr(&e->flags, OLD_BAD);
+    return;
+  }
   if ((flags & ACC_SHARED) || ((flags & ACC_GENERIC) && __isShared((const void*)addr))) {
     // a generic address in the shared window, or (LDS/STS through NVBit) already an offset into the block's shared memory
     const uint32_t off = __isShared((const void*)addr) ? (uint32_t)__cvta_generic_to_shared((const void*)addr) : (uint32_t)addr & 0xFFFFFFu;
-    if (S->sm_vc) sm_access(S, iid, flags & ACC_WRITE, flags & (ACC_STRONG | ACC_ATOMIC), size, off);
+    if (S->sm_shadow) sm_access(S, iid, flags & ACC_WRITE, flags & (ACC_STRONG | ACC_ATOMIC), size, off);
     return;
   }
   if ((flags & ACC_GENERIC) && !__isGlobal((const void*)addr)) return;
@@ -214,6 +268,8 @@ __device__ __forceinline__ void check_access(DevState* S, uint32_t iid, uint32_t
     prof(S, PROF_REL); prof(S, PROF_JOIN_ENTRIES, S->n);
     SyncEntry* e = sync_entry(S, addr >> 2, true);
     uint32_t* c = clock_at(S, e);
+    const uint32_t k = *(volatile uint32_t*)(mine + block);
+    if (S->wo) rel_cover(S, block, wib, k);
     if (c) {
       for (uint32_t i = 0; i < S->n; ++i) { const uint32_t v = mine[i]; if (flags & ACC_ATOMIC) { if (v) atomicMax(c + i, v); } else c[i] = v; }
       __threadfence();
@@ -235,7 +291,7 @@ __device__ __forceinline__ void check_access(DevState* S, uint32_t iid, uint32_t
   const unsigned peers = __match_any_sync(__activemask(), addr);
   if (get_laneid() != (unsigned)(__ffs(peers) - 1)) return;
   const uint32_t epoch = *(volatile uint32_t*)(S->epoch + my_warp(S));
-  shadow_check(S, iid, write, sync, size, addr, block, wib, epoch, *(volatile uint32_t*)(mine + block));
+  shadow_check(S, iid, write, sync, size, addr, block, wib, epoch, *(volatile uint32_t*)(mine + block), S->wo ? own_s(S, block, wib) : 0);
 }
 
 // Check one access (by a warp, or by a block's copy agent with the issuing warp's wib and epoch) against the shadow of each word it covers,
@@ -251,7 +307,7 @@ __device__ __forceinline__ bool maybe_written(const DevState* S, uint64_t a) {
 }
 
 __device__ void shadow_check(DevState* S, uint32_t iid, bool write, bool sync, uint32_t size, uint64_t addr, uint32_t block,
-                             uint32_t wib, uint32_t epoch, uint32_t clock) {
+                             uint32_t wib, uint32_t epoch, uint32_t clock, uint32_t s) {
   prof(S, PROF_MEM); prof(S, PROF_MEM_WORDS, size / 4);
   if (write) for (uint64_t pg = addr >> 12; pg <= (addr + size - 1) >> 12; ++pg) mark_written(S, pg << 12);
   const unsigned long long cur = pack(write, sync, wib, block, epoch, clock);
@@ -264,19 +320,26 @@ __device__ void shadow_check(DevState* S, uint32_t iid, bool write, bool sync, u
     // When the entry already holds this very access (same warp, kind, barrier epoch and clock, as in a spin loop or a
     // warp re-reading a word), it was published and fenced before: only the check is left, and it needs no fence.
     if (write) {
-      if (S->adversarial) e->old = *(volatile const uint32_t*)a;   // checked before the write lands: the value it replaces
+      // adversarial mode: (writer, old, size) are updated inside an odd sequence count, so a load that reads them while
+      // they change (a torn record) is left alone instead of being given a value from another write
+      if (S->adversarial) { atomicAdd(&e->flags, 0x10000u); __threadfence(); e->old = *(volatile const uint32_t*)a; }
       const unsigned long long held = *(volatile unsigned long long*)&e->writer;
       if (held != cur) {
-        const uint32_t prev_iid = e->writer_iid;
-        const unsigned long long pw = atomicExch(&e->writer, cur); e->writer_iid = iid;
-        if ((pw & VALID) && !((pw & F_SYNC) && sync) && !ordered(S, pw, block, wib, epoch)) report(S, a, prev_iid, iid, pw, cur, 1u);
+        const uint32_t prev_iid = e->writer_iid, prev_s = e->writer_s;
+        const unsigned long long pw = atomicExch(&e->writer, cur); e->writer_iid = iid; e->writer_s = s;
+        if ((pw & VALID) && !((pw & F_SYNC) && sync) && !ordered(S, pw, prev_s, block, wib, epoch)) report(S, a, prev_iid, iid, pw, cur, 1u);
         __threadfence();
-      } else { prof(S, PROF_SAME); }
+      } else { prof(S, PROF_SAME); e->writer_s = s; }
+      if (S->adversarial) {
+        const uint32_t f = *(volatile uint32_t*)&e->flags;
+        atomicAnd(&e->flags, 0xFFFF0000u); atomicOr(&e->flags, (size > 255 ? 255u : size) << 8);   // OLD_BAD cleared
+        (void)f; __threadfence(); atomicAdd(&e->flags, 0x10000u);
+      }
       const unsigned long long pr = *(volatile unsigned long long*)&e->reader;
-      if ((pr & VALID) && !((pr & F_SYNC) && sync) && !ordered(S, pr, block, wib, epoch)) report(S, a, e->reader_iid, iid, pr, cur, 2u);
+      if ((pr & VALID) && !((pr & F_SYNC) && sync) && !ordered(S, pr, e->reader_s, block, wib, epoch)) report(S, a, e->reader_iid, iid, pr, cur, 2u);
     } else {
       const unsigned long long held = *(volatile unsigned long long*)&e->reader;
-      if (held != cur) { atomicExch(&e->reader, cur); e->reader_iid = iid; __threadfence(); } else { prof(S, PROF_SAME); }
+      if (held != cur) { atomicExch(&e->reader, cur); e->reader_iid = iid; e->reader_s = s; __threadfence(); } else { prof(S, PROF_SAME); e->reader_s = s; }
       const unsigned long long pw = *(volatile unsigned long long*)&e->writer;
       if (S->watch_log && e->writer_iid == S->watch_iid && (pw & VALID)) {
         const uint32_t k = atomicAdd(S->watch_log, 1u);
@@ -286,11 +349,21 @@ __device__ void shadow_check(DevState* S, uint32_t iid, bool write, bool sync, u
           r[4] = *(volatile const uint32_t*)(clock_of(S, block) + p_block(pw)); r[5] = (pw & F_SYNC) ? 1 : 0;
         }
       }
-      if ((pw & VALID) && !((pw & F_SYNC) && sync) && !ordered(S, pw, block, wib, epoch)) {
+      if ((pw & VALID) && !((pw & F_SYNC) && sync) && !ordered(S, pw, e->writer_s, block, wib, epoch)) {
         report(S, a, e->writer_iid, iid, pw, cur, 0u);
         if (S->adversarial && block < S->nb && w < 4) {   // a warp's own load: remember what it may legally read instead
-          const uint32_t t = my_thread(S);
-          S->adv_mask[t] |= 1u << w; S->adv_old[t * 4 + w] = e->old;
+          const uint32_t f1 = *(volatile uint32_t*)&e->flags;
+          const uint32_t old = *(volatile uint32_t*)&e->old;
+          __threadfence();
+          const uint32_t f2 = *(volatile uint32_t*)&e->flags;
+          const unsigned long long pw2 = *(volatile unsigned long long*)&e->writer;
+          if ((f1 & 0x10000u) || f1 != f2 || pw2 != pw) { if (S->adv_torn) atomicAdd(S->adv_torn, 1u); }
+          else if (f1 & OLD_BAD) { if (S->adv_torn) atomicAdd(S->adv_torn, 1u); }
+          else {
+            const uint32_t t = my_thread(S);
+            S->adv_mask[t] |= 1u << w; S->adv_old[t * 4 + w] = old;
+            if (((f1 >> 8) & 0xFF) != (size > 255 ? 255u : size) && S->adv_mixed) atomicAdd(S->adv_mixed, 1u);
+          }
         }
       }
     }
@@ -475,6 +548,7 @@ __device__ void sm_report(DevState* S, uint32_t off, uint32_t iid_prev, uint32_t
 // One access by `slot` of block b at its clock `clock`, to [off, off + size) of the block's shared memory.
 __device__ void sm_check(DevState* S, uint32_t iid, bool write, bool sync, uint32_t size, uint32_t off, uint32_t b, uint32_t slot,
                          uint32_t clock) {
+  if (!S->sm_shadow) return;   // shared clocks kept for warp-level ordering, shared accesses not checked
   const uint32_t* me = sm_row(S, b, slot);
   const unsigned long long cur = SM_VALID | (write ? SM_WRITE : 0) | (sync ? SM_SYNC : 0) | ((unsigned long long)slot << 32) | clock;
   auto ordered = [&](unsigned long long p) {
@@ -542,6 +616,10 @@ extern "C" __device__ __noinline__ void syncsan_bar_pre(int pred, uint32_t neg, 
   if (const uint32_t v = S->warp_agent[my_warp(S)]) if (S->n > S->nb) atomicMax(clock_of(S, b) + S->nb + b, v);
   if (!S->sm_vc) return;
   const uint32_t w = linear_tid() >> 5;
+  if (S->wo) {   // what this warp acquired goes to the warps that wait at the barrier
+    if (id == 0xFFFFFFFFu) for (uint32_t k = 0; k < SM_BARS; ++k) join1(S, S->wbar + ((size_t)b * SM_BARS + k) * S->n, wrow_of(S, b, w));
+    else join1(S, S->wbar + ((size_t)b * SM_BARS + id % SM_BARS) * S->n, wrow_of(S, b, w));
+  }
   if (id == 0xFFFFFFFFu) {   // the id register couldn't be read where the call sits: release into every barrier
     uint32_t* r = sm_row(S, b, w);
     for (uint32_t k = 0; k < SM_BARS; ++k) sm_join(S->sm_bar + ((size_t)b * SM_BARS + k) * SM_SLOTS, r);
@@ -556,7 +634,10 @@ extern "C" __device__ __noinline__ void syncsan_mbar_arrive(int pred, uint32_t n
   DevState* S = (DevState*)pstate;
   if ((neg ? pred : !pred) || !S->sm_vc || !leader()) return;
   const uint32_t b = linear_cta(S);
-  if (uint32_t* m = sm_mbar(S, b, ((uint32_t)base + (uint32_t)(base >> 32) + imm) & 0xFFFFFFu)) sm_release(S, b, linear_tid() >> 5, m);
+  if (uint32_t* m = sm_mbar(S, b, ((uint32_t)base + (uint32_t)(base >> 32) + imm) & 0xFFFFFFu)) {
+    if (S->wo) join1(S, S->wmbar + (size_t)((m - S->sm_mbar) / SM_SLOTS) * S->n, wrow_of(S, b, linear_tid() >> 5));
+    sm_release(S, b, linear_tid() >> 5, m);
+  }
 }
 
 // cp.async (LDGSTS) destination: the copy engine writes it, done at the issuing thread's DEPBAR.
@@ -579,13 +660,17 @@ extern "C" __device__ __noinline__ void syncsan_ldgsts_dst(int pred, uint32_t ii
 __device__ void sm_bar_acquire(DevState* S, uint32_t id) {
   if (!S->sm_vc) return;
   const uint32_t b = linear_cta(S);
+  if (S->wo) join1(S, wrow_of(S, b, linear_tid() >> 5), S->wbar + ((size_t)b * SM_BARS + (id % SM_BARS)) * S->n);
   sm_acquire(S, b, linear_tid() >> 5, S->sm_bar + ((size_t)b * SM_BARS + (id % SM_BARS)) * SM_SLOTS);
 }
 
 __device__ void sm_wait(DevState* S, bool mbar, uint32_t addr) {
   const uint32_t b = linear_cta(S), w = linear_tid() >> 5;
   if (!mbar) { sm_acquire(S, b, w, sm_row(S, b, SM_AGENT_WAIT)); return; }   // DEPBAR: the warp's cp.async / bulk-store reads are done
-  if (const uint32_t* m = sm_mbar(S, b, addr)) sm_acquire(S, b, w, m);
+  if (const uint32_t* m = sm_mbar(S, b, addr)) {
+    if (S->wo) join1(S, wrow_of(S, b, w), S->wmbar + (size_t)((m - S->sm_mbar) / SM_SLOTS) * S->n);
+    sm_acquire(S, b, w, m);
+  }
 }
 
 // The shared side of a bulk or TMA copy issued by this warp. to_shared: a load, written by SM_AGENT_MBAR and completed

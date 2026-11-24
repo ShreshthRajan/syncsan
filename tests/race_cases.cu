@@ -243,6 +243,39 @@ __global__ void bulk_store_smem(int* g, int fixed) {
 #endif
 }
 
+// Message passing between two blocks of 128 threads, the way most megakernel handoffs are written: block 1's threads all
+// write data[tid], then thread 0 alone fences and adds 1 to a flag; block 0's thread 0 alone spins on the flag and fences,
+// then every thread reads data[tid]. bit 0 of `mode`: __syncthreads() before the producer's thread 0 releases; bit 1:
+// __syncthreads() after the consumer's thread 0 acquires. Without either barrier, warps 1-3's data is not ordered.
+__global__ void mp_block(unsigned* flag, unsigned* data, unsigned* out, int mode) {
+  const int t = threadIdx.x;
+  if (blockIdx.x == 1) {
+    data[t] = t + 1;
+    if (mode & 1) __syncthreads();
+    if (t == 0) { __threadfence(); atomicAdd(flag, 1u); }
+  } else {
+    if (t < 32) { if (t == 0) { while (*(volatile unsigned*)flag == 0) {} __threadfence(); } __syncwarp(); }   // warp 0 waits
+    if (mode & 2) __syncthreads();
+    else if (t >= 32) for (int i = 0; i < 20; ++i) __nanosleep(100000);   // read well after thread 0's acquire, still unordered
+    out[t] = data[t];
+  }
+}
+
+// Adversarial mode's own checks. adv_mp: block 1's thread 0 writes 32 data words (value i + 1 over a zeroed buffer), then
+// a flag; block 0's thread 0 waits for the flag and copies the data. With a relaxed flag (racy) the copy is allowed to
+// read 0, and adversarial mode must make it read 0; with an acquire it must read the new values.
+// adv_subword: the consumer also overwrites the low half of data[0] itself before reading it. Its own store is ordered
+// before its load, so the load must see it: adversarial mode must not return the value from before the producer's write.
+__global__ void adv_mp(unsigned* flag, unsigned* data, unsigned* out, int acquire, int subword) {
+  if (threadIdx.x != 0) return;
+  if (blockIdx.x == 1) { for (int i = 0; i < 32; ++i) data[i] = i + 1; __threadfence(); st_relaxed(flag, 1); }
+  else {
+    if (acquire) while (ld_acquire(flag) == 0) {} else while (ld_relaxed(flag) == 0) {}
+    if (subword) *(volatile unsigned short*)data = 0x7777;
+    for (int i = 0; i < 32; ++i) out[i] = data[i];
+  }
+}
+
 int main(int argc, char** argv) {
   const char* c = argc > 1 ? argv[1] : "";
   int *buf, *out; int4 *src, *stage;
@@ -259,6 +292,12 @@ int main(int argc, char** argv) {
   else if (!strcmp(c, "mp_acquire_flag")) mp<<<2, 32>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out, 1);
   else if (!strcmp(c, "mp_volatile_fence")) mp<<<2, 32>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out, 2);
   else if (!strcmp(c, "mp_no_release")) mp_no_release<<<2, 32>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out);
+  else if (!strcmp(c, "mp_block_barriers")) mp_block<<<2, 128>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out, 3);
+  else if (!strcmp(c, "mp_block_no_producer_barrier")) mp_block<<<2, 128>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out, 2);
+  else if (!strcmp(c, "mp_block_no_consumer_barrier")) mp_block<<<2, 128>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out, 1);
+  else if (!strcmp(c, "adv_mp_relaxed")) adv_mp<<<2, 32>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out, 0, 0);
+  else if (!strcmp(c, "adv_mp_acquire")) adv_mp<<<2, 32>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out, 1, 0);
+  else if (!strcmp(c, "adv_subword")) adv_mp<<<2, 32>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out, 0, 1);
   else if (!strcmp(c, "rmw_acqrel")) rmw_handoff<<<2, 32>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out, 1);
   else if (!strcmp(c, "rmw_relaxed")) rmw_handoff<<<2, 32>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out, 0);
   else if (!strcmp(c, "last_block_fenced")) last_block<<<64, 128>>>((unsigned*)buf, (unsigned*)buf + 1024, (unsigned*)out, 1);

@@ -29,8 +29,10 @@ struct ShadowEntry {
   unsigned long long reader;
   uint32_t writer_iid, reader_iid;
   uint32_t old;               // SYNCSAN_ADVERSARIAL: the word's value before its last write
-  uint32_t pad;
+  uint32_t writer_s, reader_s;   // the accessing warp's own shared-clock entry at the access (warp-level ordering)
+  uint32_t flags;             // OLD_BAD: a write the shadow did not track (sub-word) came after `old`; bits 8..15: last write's size
 };
+constexpr uint32_t OLD_BAD = 1;
 
 struct SyncEntry {            // a location used for release/acquire, and the vector clock its last release left there
   unsigned long long key;
@@ -62,7 +64,10 @@ constexpr uint32_t PAIR_BITS = 16;
 constexpr uint32_t PENDING = 8;
 constexpr uint32_t WPAGE_BITS = 27;                  // hashed 4 KB pages written in this launch (16 MB bitmap)
 constexpr uint32_t TMA_BITS = 12;                    // tensor maps syncsan can decode (a hash table in mapped host memory)
-constexpr uint32_t AGENT_MAX_BLOCKS = MAX_CTAS / 2;  // async-copy agents need a clock slot per block: grids up to this size
+constexpr uint32_t AGENT_MAX_BLOCKS = MAX_CTAS / 2;
+// Warp-level ordering between blocks (v0.9): launches of up to WO_MAX_BLOCKS blocks keep, for each warp, what it has
+// acquired, and for each block release, which warps' accesses it publishes. Larger grids fall back to block-level clocks.
+constexpr uint32_t WO_MAX_BLOCKS = 320, WO_N = 2 * WO_MAX_BLOCKS, WO_RELH = 64, WO_COV = 33;  // async-copy agents need a clock slot per block: grids up to this size
 
 // ---- shared memory (v4) ----
 // Each block keeps a vector clock per warp over SM_SLOTS slots: warps 0..31, then two async agents of the block's copy
@@ -110,6 +115,14 @@ struct DevState {
   uint32_t* joined_slot;     // per thread: the location and version its last acquire joined
   uint32_t* joined_ver;
   uint32_t* wpages;          // [1 << WPAGE_BITS bits]: pages some write touched this launch (TMA loads skip the others)
+  uint32_t wo;               // this launch uses warp-level ordering (nb <= WO_MAX_BLOCKS and shared clocks on)
+  uint32_t* wrow;            // [WO_MAX_BLOCKS][32][n]: what each warp has acquired of each block's releases
+  uint32_t* wbar;            // [WO_MAX_BLOCKS][SM_BARS][n]: carried across each named barrier
+  uint32_t* wmbar;           // [WO_MAX_BLOCKS][SM_MBARS][n]: carried through each mbarrier
+  uint32_t* relcov;          // [WO_MAX_BLOCKS][WO_RELH][WO_COV]: after the release that published block clock k, the
+                             // latest own-clock entry of each warp that releases up to k cover; [32] = k + 1 (the tag)
+  unsigned int* adv_mixed;   // injections whose load size differs from the last write's size (mapped)
+  unsigned int* adv_torn;    // injections skipped because the word's last write changed while it was read (mapped)
   uint32_t* sm_vc;           // [nb][SM_BLOCK]: per block, SM_SLOTS rows of SM_ROW (and one padding row)
   uint32_t* sm_bar;          // [nb][SM_BARS][SM_SLOTS]
   unsigned long long* sm_mbar_key;   // [nb][SM_MBARS]: shared address + 1 of each tracked mbarrier

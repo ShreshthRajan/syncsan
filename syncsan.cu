@@ -34,6 +34,8 @@ static bool g_do_mem = true, g_do_bar = true, g_do_fence = true;   // SYNCSAN_IN
 static std::vector<std::string> g_skip_ops;                         // SYNCSAN_SKIP_OPS=PREFIX,... or =OPCODE: memory opcodes left alone
 static std::map<std::string, int> g_op_counts;
 static bool g_shared = true;
+static bool g_smvc = true;      // shared clocks for warp-level ordering (SYNCSAN_WARP_ORDER=0 turns it off)
+static unsigned int *g_adv_mixed_host = nullptr, *g_adv_torn_host = nullptr;
 static bool g_adv = false, g_adv_control = false;   // SYNCSAN_ADVERSARIAL=1 | control
 static uint64_t g_adv_sites = 0, g_adv_emul = 0;
 static unsigned int* g_adv_count_host = nullptr;
@@ -41,7 +43,7 @@ static uint32_t* g_watch_host = nullptr; static unsigned g_watch_off = 0; static
 static uint32_t g_first_nb = 1;   // blocks in the first instrumented launch (sizes the shared shadow)
 static bool g_check_nc = false, g_async_tma = true, g_async_bulk = true, g_async_wait = true;
 static uint32_t g_sample = 1, g_sample_seed = 0;
-static uint64_t g_hoisted = 0, g_hazard_skipped = 0, g_folded = 0;
+static uint64_t g_hoisted = 0, g_hazard_skipped = 0, g_folded = 0, g_hazard_skipped_writes = 0;
 static std::string g_only_op;                    // SYNCSAN_ONLY_OP=OPCODE with SYNCSAN_NTH=lo:hi instruments only the lo-th..hi-1-th
 static long g_nth_lo = 0, g_nth_hi = -1, g_nth = 0;
 static bool g_after = false, g_nop = false;     // SYNCSAN_NOP=1: memory instructions call an empty function (experiment)
@@ -77,6 +79,18 @@ void nvbit_at_init() {
   if (const char* k = getenv("SYNCSAN_SKIP_OPS")) {
     std::string v = k; size_t a = 0;
     while (a <= v.size()) { size_t b = v.find(',', a); if (b == std::string::npos) b = v.size(); if (b > a) g_skip_ops.push_back(v.substr(a, b - a)); a = b + 1; }
+  }
+  if (const char* w = getenv("SYNCSAN_WARP_ORDER")) g_smvc = strcmp(w, "0") != 0;
+  // Adversarial values are allowed by the PTX model only if syncsan saw every write to the word: no store sampling, and
+  // a warning for skipped store opcodes.
+  if (g_adv && g_sample > 1) {
+    fprintf(stderr, "syncsan: WARNING: SYNCSAN_SAMPLE is ignored in adversarial mode (an unseen store would make a substituted value one the model forbids)\n");
+    g_sample = 1;
+  }
+  if (g_adv) for (const std::string& o : g_skip_ops) {
+    const std::string op = o[0] == '=' ? o.substr(1) : o;
+    if (op.rfind("ST", 0) == 0 || op.rfind("RED", 0) == 0 || op.rfind("ATOM", 0) == 0)
+      fprintf(stderr, "syncsan: WARNING: SYNCSAN_SKIP_OPS=%s skips writes; adversarial values at words they write may be ones the model forbids\n", o.c_str());
   }
 }
 
@@ -117,11 +131,19 @@ static void alloc_state() {
     CK(cudaMalloc(&g_host.adv_old, sizeof(uint32_t) * MAX_CTAS * 1024 * 4));
     CK(cudaMalloc(&g_host.adv_scratch, sizeof(uint32_t) * MAX_CTAS * 1024 * 4));
   }
-  if (g_shared) {   // shared-memory checking (v4): per-warp clocks, barrier and mbarrier clocks, a shadow of shared words
+  if (g_shared || g_smvc) {   // per-warp clocks within each block, barrier and mbarrier clocks
     CK(cudaMalloc(&g_host.sm_vc, sizeof(uint32_t) * MAX_CTAS * SM_BLOCK));
     CK(cudaMalloc(&g_host.sm_bar, sizeof(uint32_t) * MAX_CTAS * SM_BARS * SM_SLOTS));
     CK(cudaMalloc(&g_host.sm_mbar_key, sizeof(unsigned long long) * MAX_CTAS * SM_MBARS));
     CK(cudaMalloc(&g_host.sm_mbar, sizeof(uint32_t) * MAX_CTAS * SM_MBARS * SM_SLOTS));
+  }
+  if (g_smvc) {   // warp-level ordering between blocks (launches of up to WO_MAX_BLOCKS blocks)
+    CK(cudaMalloc(&g_host.wrow, sizeof(uint32_t) * WO_MAX_BLOCKS * 32 * WO_N));
+    CK(cudaMalloc(&g_host.wbar, sizeof(uint32_t) * WO_MAX_BLOCKS * SM_BARS * WO_N));
+    CK(cudaMalloc(&g_host.wmbar, sizeof(uint32_t) * WO_MAX_BLOCKS * SM_MBARS * WO_N));
+    CK(cudaMalloc(&g_host.relcov, sizeof(uint32_t) * WO_MAX_BLOCKS * WO_RELH * WO_COV));
+  }
+  if (g_shared) {   // shared-memory checking (v4): a shadow of shared words
     // twice the shared words the first launch's blocks can hold (228 KB each), so probes stay short: a full table makes
     // every shared access walk its probe sequence (a megakernel crawled with 4M entries for 132 blocks x 57K words)
     uint32_t bits = 22;
@@ -145,6 +167,13 @@ static void alloc_state() {
   CK(cudaHostGetDevicePointer((void**)&d.n_sync_dropped, g_host.n_sync_dropped, 0));
   CK(cudaHostGetDevicePointer((void**)&d.tma, g_host.tma, 0));
   if (g_adv_count_host) CK(cudaHostGetDevicePointer((void**)&d.adv_count, g_adv_count_host, 0));
+  if (g_adv && !g_adv_control) {
+    CK(cudaHostAlloc(&g_adv_mixed_host, sizeof(unsigned int), cudaHostAllocMapped));
+    CK(cudaHostAlloc(&g_adv_torn_host, sizeof(unsigned int), cudaHostAllocMapped));
+    *g_adv_mixed_host = 0; *g_adv_torn_host = 0;
+    CK(cudaHostGetDevicePointer((void**)&d.adv_mixed, g_adv_mixed_host, 0));
+    CK(cudaHostGetDevicePointer((void**)&d.adv_torn, g_adv_torn_host, 0));
+  }
   if (g_watch) {
     CK(cudaHostAlloc(&g_watch_host, sizeof(uint32_t) * (8 + 512 * 6), cudaHostAllocMapped));
     memset(g_watch_host, 0, sizeof(uint32_t) * (8 + 512 * 6));
@@ -183,12 +212,22 @@ static void reset_for_launch(cudaStream_t st, uint32_t grid) {
     CK(cudaMemsetAsync(g_host.sm_bar, 0, sizeof(uint32_t) * (size_t)nb * SM_BARS * SM_SLOTS, st));
     CK(cudaMemsetAsync(g_host.sm_mbar_key, 0, sizeof(unsigned long long) * (size_t)nb * SM_MBARS, st));
     CK(cudaMemsetAsync(g_host.sm_mbar, 0, sizeof(uint32_t) * (size_t)nb * SM_MBARS * SM_SLOTS, st));
-    CK(cudaMemsetAsync(g_host.sm_shadow, 0, sizeof(SmShadow) << g_host.sm_shadow_bits, st));
+    if (g_host.sm_shadow) CK(cudaMemsetAsync(g_host.sm_shadow, 0, sizeof(SmShadow) << g_host.sm_shadow_bits, st));
     // each slot's own entry starts at 1: rows are SM_ROW long with a padding row per block, so the diagonals of all
     // blocks are every (SM_ROW + 1)-th word
     if (cuMemsetD2D32Async((CUdeviceptr)g_host.sm_vc, (size_t)(SM_ROW + 1) * 4, 1u, 1, (size_t)nb * SM_SLOTS, (CUstream)st) != CUDA_SUCCESS) {
       fprintf(stderr, "syncsan: cuMemsetD2D32Async (shared clocks) failed\n"); exit(1);
     }
+  }
+  const uint32_t wo = g_host.wrow && nb <= WO_MAX_BLOCKS ? 1u : 0u;
+  if (wo) {
+    CK(cudaMemsetAsync(g_host.wrow, 0, sizeof(uint32_t) * (size_t)nb * 32 * n, st));
+    CK(cudaMemsetAsync(g_host.wbar, 0, sizeof(uint32_t) * (size_t)nb * SM_BARS * n, st));
+    CK(cudaMemsetAsync(g_host.wmbar, 0, sizeof(uint32_t) * (size_t)nb * SM_MBARS * n, st));
+    CK(cudaMemsetAsync(g_host.relcov, 0, sizeof(uint32_t) * (size_t)nb * WO_RELH * WO_COV, st));
+  }
+  if (cuMemsetD32Async((CUdeviceptr)((char*)g_dev + offsetof(DevState, wo)), wo, 1, (CUstream)st) != CUDA_SUCCESS) {
+    fprintf(stderr, "syncsan: cuMemsetD32Async failed\n"); exit(1);
   }
   CK(cudaMemsetAsync(g_host.warp_agent, 0, sizeof(uint32_t) * (size_t)ctas * 32, st));
   if (cuMemsetD2D32Async((CUdeviceptr)g_host.vc, (size_t)(n + 1) * 4, 1u, 1, n, (CUstream)st) != CUDA_SUCCESS) {
@@ -388,7 +427,7 @@ static void instrument(CUcontext ctx, CUfunction kernel) {
         nvbit_add_call_arg_const_val32(at, imm);
       };
       if (op.rfind("SYNCS.ARRIVE", 0) == 0) {   // mbarrier arrive: a release into the mbarrier
-        if (!g_do_bar || !g_shared) continue;
+        if (!g_do_bar || !(g_shared || g_smvc)) continue;
         bool u = false; int r = -1, ur = -1; uint32_t imm = 0;
         if (!mbar_operand(in->getSass(), u, r, ur, imm)) { if (g_verbose) fprintf(stderr, "syncsan: not modeled: %s\n", in->getSass()); continue; }
         size_t j = pos;   // before a preceding run of in-flight loads (the sm_90 hazard), if none of them writes the address register
@@ -561,7 +600,7 @@ static void instrument(CUcontext ctx, CUfunction kernel) {
           const int lo = d->u.reg.num, w = std::max(1, instrs[k]->getSize() / 4);
           if (ra < lo + w && lo < ra + ra_w) ok = false;
         }
-        if (!ok) { ++g_hazard_skipped; continue; }
+        if (!ok) { ++g_hazard_skipped; if (flags & ACC_WRITE) ++g_hazard_skipped_writes; continue; }
         const Instr* at = instrs[j];
         // adversarial (see syncsan_mem_adv): also needs no load in the run to use ra as its address
         const InstrType::operand_t* d0 = in->getOperand(0);
@@ -821,13 +860,21 @@ void nvbit_at_term() {
   }
   const unsigned int n = *g_host.n_records;
   if (g_hoisted || g_hazard_skipped)
-    fprintf(stderr, "syncsan: %llu memory checks placed before a preceding run of loads (sm_90 NVBit hazard), %llu instructions left unchecked for it\n",
-            (unsigned long long)g_hoisted, (unsigned long long)g_hazard_skipped);
+    fprintf(stderr, "syncsan: %llu memory checks placed before a preceding run of loads (sm_90 NVBit hazard), %llu instructions left unchecked for it (%llu writes)\n",
+            (unsigned long long)g_hoisted, (unsigned long long)g_hazard_skipped, (unsigned long long)g_hazard_skipped_writes);
 
   if (g_adv) {
     fprintf(stderr, "syncsan: ADVERSARIAL%s %llu load sites eligible (%llu replaced), %u loads %s\n", g_adv_control ? " (control)" : "",
             (unsigned long long)g_adv_sites, (unsigned long long)g_adv_emul, g_adv_count_host ? *g_adv_count_host : 0u,
             g_adv_control ? "raced (given their current values)" : "returned the value before a racing write");
+    if (g_adv_mixed_host)
+      fprintf(stderr, "syncsan: ADVERSARIAL %u substituted words were last written by an access of another width (a vector, bulk or TMA "
+                      "access against a narrower or wider one: a mixed-size race if the element types differ, which SASS does "
+                      "not show); %u words left alone (a sub-word write after the recorded one, or the record changing while read)\n",
+              *g_adv_mixed_host, *g_adv_torn_host);
+    if (*g_host.n_dropped || g_hazard_skipped_writes || g_concurrent_skipped)
+      fprintf(stderr, "syncsan: WARNING: adversarial values at words written by untracked accesses (shadow full, hazard-skipped or "
+                      "unchecked concurrent kernels) may be ones the model forbids\n");
   }
   if (g_watch_host) {
     const uint32_t n = std::min(g_watch_host[0], 512u);
