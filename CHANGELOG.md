@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0 (2026-11-24)
+
+- One kernel at a time: a launch that starts while a checked kernel runs on another stream runs unchecked, with a
+  warning. Before, its reset cleared the running kernel's state and produced false reports (Mirage MPK runs its worker
+  and scheduler kernels at once). Regression test `tests/concurrent_streams.cu`, run by `tests/run_tests.sh`.
+- Mirage MPK: a shared-memory race in the argmax reduction.
+- Lucebox on an RTX 5090 (sm_120): adversarial wrong tokens, control bitwise, fixed build clean; 20,000 native decodes
+  identical on the 5090 as on the H100.
+- Daytona runners in `reproduce/daytona/`.
+
 ## 0.7.0 (2026-11-23)
 
 - megakernel-zoo (Qwen3-8B) and Lucebox (Qwen3.5-0.8B): missing acquires after grid-counter spins, shown as wrong

@@ -48,7 +48,7 @@ Details in [docs/automegakernel.md](docs/automegakernel.md).
 
 ## Install
 
-syncsan needs Linux on x86-64, an NVIDIA GPU of compute capability 8.0 or newer (tested on A100, H100 and B200), CUDA
+syncsan needs Linux on x86-64, an NVIDIA GPU of compute capability 8.0 or newer (tested on A100, H100, B200 and RTX 5090), CUDA
 12 with `nvcc`, and CMake 3.29 or newer.
 
 ```
@@ -105,6 +105,12 @@ Qwen3.5-0.8B megakernel it reports 107 pairs and the adversarial output is garba
 is bitwise equal to native, and a fence after the spin restores the correct output. Lucebox's barrier also resets its
 counter with a plain store that races with the other blocks' `atomicAdd`. Details in
 [docs/megakernel-zoo.md](docs/megakernel-zoo.md) and [docs/lucebox.md](docs/lucebox.md).
+
+**Mirage MPK.** In Mirage's persistent megakernel (Qwen3-1.7B, H100), syncsan reports a shared-memory race in the
+argmax reduction: it runs once per batch row with no barrier between warp 0 reading the per-warp maxima and the other
+warps writing the next row's, so a warp that runs ahead can change another row's token. It needs several rows in one
+task (prefill, batching, speculative decoding) and did not show up in our greedy runs. Mirage runs its worker and
+scheduler kernels at once, which exposed a syncsan bug (fixed in 0.8.0). Details in [docs/mirage.md](docs/mirage.md).
 
 **SuperLU_DIST.** The GPU triangular solve's fix for a dropped fence (commit 587f38f) restored the consumer's acquire
 but left the producer's release out: syncsan still reports 4 racing pairs, adversarial mode gives a wrong solution

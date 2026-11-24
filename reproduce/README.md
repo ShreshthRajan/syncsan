@@ -23,3 +23,5 @@ $4 an hour there.
 - `hazy_witness.py` is the native canary test in [docs/hazy-megakernel.md](../docs/hazy-megakernel.md): run it in place
   of `megakernels/scripts/generate.py`, with `CANARY=silu_out` or `CANARY=attn_out`, inside the image `modal_hazy.py`
   builds.
+- `daytona/` runs the Mirage, Lucebox (RTX 5090) and megakernel-zoo jobs on [Daytona](https://www.daytona.io) GPU
+  sandboxes; see [daytona/README.md](daytona/README.md).
