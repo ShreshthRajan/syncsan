@@ -1,19 +1,20 @@
 # syncsan
 
-syncsan finds data races in GPU megakernels and shows what they do to the output. It runs unmodified CUDA binaries
-under [NVBit](https://github.com/NVlabs/NVBit), tracks happens-before as the PTX memory model defines it, and reports
-every pair of accesses that no barrier, release/acquire pair, fence or async-copy wait orders. In adversarial mode,
-each load that is not ordered after the last write to its word returns the value that word held before that write,
-which the PTX model still allows it to return. A race then becomes a wrong output on a real GPU.
+syncsan finds data races in GPU megakernels and shows what they do to the output. It runs unmodified CUDA binaries under
+[NVBit](https://github.com/NVlabs/NVBit), tracks happens-before as the PTX memory model defines it, and reports every
+pair of accesses that no barrier, release/acquire pair, fence or async-copy wait orders. In adversarial mode, each load
+that is not ordered after the last write to its word returns the value that word held before that write. For a race
+between two same-size accesses that syncsan tracked, the PTX model allows that value; the conditions are in
+[docs/how-it-works.md](docs/how-it-works.md). A race then becomes a wrong output from a real GPU, under an execution the
+model permits.
 
 ## Example: Hazy Research's Llama-1B megakernel
 
-The [low-latency Llama megakernel](https://github.com/HazyResearch/Megakernels) hands activations between SMs with a
-TMA store, a relaxed `atomicAdd` on a counter, a `volatile` spin and a read, with no gpu-scope fence, so the PTX model
-does not order the read after the store. syncsan reports 25 racing instruction pairs in one run, covering these
-handoffs: Q, K and V into attention, attention output into o_proj, `silu_out` into the down-projection, and the residual
-stream into the next RMS norm. On
-an H100, 8 tokens:
+The [low-latency Llama megakernel](https://github.com/HazyResearch/Megakernels) hands activations between SMs with a TMA
+store, a relaxed `atomicAdd` on a counter, a `volatile` spin and a read, with no gpu-scope fence, so the PTX model does
+not order the read after the store. syncsan reports 25 racing instruction pairs in one run, covering these handoffs: Q,
+K and V into attention, attention output into o_proj, `silu_out` into the down-projection, and the residual stream into
+the next RMS norm. On an H100, 8 tokens, global memory checked (`SYNCSAN_SHARED=0`):
 
 | Build | Mode | Loads given an older value | Output |
 |---|---|---|---|
@@ -22,20 +23,21 @@ an H100, 8 tokens:
 | original | control (same redirection, current values) | 13.2M | "Why did the cookie go to the" |
 | release/acquire counters | adversarial | 0 | "Why did the cookie go to the" |
 
-The wrong text changes from run to run (another run printed "wedchuntghtunday造成uarios"); it is wrong in every run.
-The control run redirects the same loads but hands them their current values, which rules out the redirection itself
-as the cause. Making the counters `red.release.gpu` and `ld.acquire.gpu` removes every report and
-costs about 9% in latency. The analysis and the fix are in [docs/hazy-megakernel.md](docs/hazy-megakernel.md) and in
-[HazyResearch/Megakernels#16](https://github.com/HazyResearch/Megakernels/issues/16). The same missing release/acquire
-was found earlier by hand in [#15](https://github.com/HazyResearch/Megakernels/issues/15), on the up/gate to
-down-projection handoff, where it changes tokens in 2.6% of generations on real H100s.
+The wrong text changes from run to run (another run printed "wedchuntghtunday造成uarios"); all three runs were wrong.
+Hazy's native decode is not bitwise repeatable across runs, so the comparison is on the text. The control run redirects
+the same loads but hands them their current values, which rules out the redirection itself as the cause. Making the
+counters `red.release.gpu` and `ld.acquire.gpu` removes every report and costs 9% in latency (two runs, each against the
+original in the same container). The analysis and the fix are in [docs/hazy-megakernel.md](docs/hazy-megakernel.md) and
+in [HazyResearch/Megakernels#16](https://github.com/HazyResearch/Megakernels/issues/16). The same missing
+release/acquire was found earlier by hand in [#15](https://github.com/HazyResearch/Megakernels/issues/15), on the
+up/gate to down-projection handoff, where it changes tokens in 2.6% of generations on real H100s.
 
 ## Example: AutoMegaKernel
 
-[AutoMegaKernel](https://github.com/RightNow-AI/AutoMegaKernel)'s consumers wait for their inputs with
-`atomicAdd(c, 0)`, which a source comment describes as an acquire. PTX treats it as relaxed, and no fence follows the
-spin, so syncsan reports 24 racing pairs. Its `--verify` flag compares the megakernel's tokens with an eager PyTorch run
-(toy model, H100):
+[AutoMegaKernel](https://github.com/RightNow-AI/AutoMegaKernel)'s consumers wait for their inputs with `atomicAdd(c,
+0)`, which a source comment describes as an acquire. PTX treats it as relaxed, and no fence follows the spin, so syncsan
+reports 24 racing pairs. Its `--verify` flag compares the megakernel's tokens with an eager PyTorch run (toy model,
+H100):
 
 | Build | Mode | Loads given an older value | `--verify` |
 |---|---|---|---|
@@ -48,12 +50,13 @@ Details in [docs/automegakernel.md](docs/automegakernel.md).
 
 ## Install
 
-syncsan needs Linux on x86-64, an NVIDIA GPU of compute capability 8.0 or newer (tested on A100, H100, B200 and RTX 5090), CUDA
-12 with `nvcc`, and CMake 3.29 or newer.
+syncsan needs Linux on x86-64, an NVIDIA GPU of compute capability 8.0 or newer (tested on H100, B200 and RTX 5090),
+CUDA 12 with `nvcc` (12.8 or newer for sm_120), and CMake 3.29 or newer. `syncsan build` downloads NVBit, which NVIDIA
+distributes under its own license.
 
 ```
 pip install git+https://github.com/ShreshthRajan/syncsan
-syncsan build --arch 90        # once: downloads NVBit 1.8.2 and compiles the tool (90 = H100, 100 = B200, 80 = A100)
+syncsan build --arch 90        # once: downloads NVBit 1.8.2 and compiles the tool (90 = H100, 100 = B200, 120 = RTX 50xx, 80 = A100)
 ```
 
 ## Usage
@@ -76,9 +79,9 @@ syncsan: RACE (write then read) at 0x2ba22b84c900
 ```
 
 `syncsan run --help` lists the options. The most useful ones: `--sample k` checks one plain load or store site in `k`
-(synchronization is always checked, so sampling can miss a race but cannot invent one), and `SYNCSAN_SHARED=0` turns
-off shared-memory checking. `SYNCSAN_SKIP_OPS=PREFIX,...` (or `=OPCODE` for an exact match) leaves those
-memory opcodes unchecked, such as a model's weight loads, which no step writes. [examples/github-actions.yml](examples/github-actions.yml) runs syncsan in CI on a
+(synchronization is always checked), and `SYNCSAN_SHARED=0` turns off shared-memory checking.
+`SYNCSAN_SKIP_OPS=PREFIX,...` (or `=OPCODE` for an exact match) leaves those memory opcodes unchecked, such as a model's
+weight loads, which no step writes. [examples/github-actions.yml](examples/github-actions.yml) runs syncsan in CI on a
 self-hosted GPU runner.
 
 ## What it checks
@@ -89,11 +92,18 @@ Hopper and Blackwell copy engine. TMA tensor copies, `cp.async.bulk` and `cp.asy
 block's copy engine that become visible to a warp once it waits on them, with TMA coordinates decoded from the tensor
 maps the program creates. [docs/how-it-works.md](docs/how-it-works.md) describes the model and its limits.
 
-On NVIDIA's [cuHadron](https://github.com/NVlabs/cuHadron) race benchmark (SM90), syncsan detects 9 of the 21
-single-GPU races with no false positives on the fixed builds. compute-sanitizer from CUDA 12.4 detects 6 others, all in
-shared memory. cuHadron has no test of synchronization between thread blocks, so [cuhadron/](cuhadron/) adds six;
-syncsan detects all six and compute-sanitizer none. syncsan does not check races between lanes of one warp,
-distributed shared memory, or ordering between kernels, streams and host copies.
+On NVIDIA's [cuHadron](https://github.com/NVlabs/cuHadron) race benchmark (SM90), syncsan detects 9 of the 21 single-GPU
+races with no false positives on the fixed builds; compute-sanitizer from CUDA 12.4 detects 5 others, all in shared
+memory. SuperCollider (PLDI 2026), whose authors wrote cuHadron, reports all but 3 of its 27 tests, so it covers more of
+the benchmark than syncsan. cuHadron has no test of release/acquire or fence synchronization between thread blocks, so
+[cuhadron/](cuhadron/) adds six, all detected by syncsan; compute-sanitizer does not check global memory and misses them
+by design.
+
+syncsan checks one kernel at a time and does not check races between lanes of one warp, distributed shared memory, or
+ordering between kernels, streams and host copies. It cannot see a missing `__syncthreads()` between a block's writes
+and a single thread's release, or between a single thread's acquire and the block's reads: a release or acquire by one
+thread counts for its whole block. The full list of what can hide a race or produce a false report is in
+[docs/how-it-works.md](docs/how-it-works.md).
 
 ## Other results
 
@@ -101,54 +111,50 @@ distributed shared memory, or ordering between kernels, streams and host copies.
 counter) but spin on the counter with a `volatile` load and no fence after it, so the waiter has no acquire. In
 [megakernel-zoo](https://github.com/dangxingyu/megakernel-zoo)'s Qwen3-8B engine syncsan reports 9 racing pairs and
 adversarial mode turns " Paris. The capital" into "eses:es"; in [Lucebox](https://github.com/Luce-Org/lucebox)'s
-Qwen3.5-0.8B megakernel it reports 107 pairs and the adversarial output is garbage at every step. In both, the control
-is bitwise equal to native, and a fence after the spin restores the correct output. Lucebox's barrier also resets its
+Qwen3.5-0.8B megakernel it reports 107 pairs and the adversarial output is wrong at every step. In both, the control is
+bitwise equal to native, and a fence after the spin restores the correct output. Lucebox's barrier also resets its
 counter with a plain store that races with the other blocks' `atomicAdd`. Details in
 [docs/megakernel-zoo.md](docs/megakernel-zoo.md) and [docs/lucebox.md](docs/lucebox.md).
 
-**Mirage MPK.** In Mirage's persistent megakernel (Qwen3-1.7B, H100), syncsan reports a shared-memory race in the
-argmax reduction: it runs once per batch row with no barrier between warp 0 reading the per-warp maxima and the other
-warps writing the next row's, so a warp that runs ahead can change another row's token. It needs several rows in one
-task (prefill, batching, speculative decoding) and did not show up in our greedy runs. Mirage runs its worker and
-scheduler kernels at once, which exposed a syncsan bug (fixed in 0.8.0). Details in [docs/mirage.md](docs/mirage.md).
+**Mirage MPK.** In Mirage's persistent megakernel (Qwen3-1.7B, H100), syncsan reports a shared-memory race in the argmax
+reduction: it runs once per batch row with no barrier between warp 0 reading the per-warp maxima and the other warps
+writing the next row's, so a warp that runs ahead could change another row's token. It needs several rows in one task
+(prefill, batching, speculative decoding) and did not show up in our greedy runs. Mirage runs its worker and scheduler
+kernels at once, which exposed a syncsan bug (fixed in 0.8.0). Details in [docs/mirage.md](docs/mirage.md).
 
 **SuperLU_DIST.** The GPU triangular solve's fix for a dropped fence (commit 587f38f) restored the consumer's acquire
 but left the producer's release out: syncsan still reports 4 racing pairs, adversarial mode gives a wrong solution
-(error about 0.7), and one `__threadfence()` before the producer's `atomicSub` clears both. The original bug (4755a5e) is
-flagged at the same lines and fails natively. Details in [docs/superlu.md](docs/superlu.md).
+(error about 0.7), and one `__threadfence()` before the producer's `atomicSub` clears both. The original bug (4755a5e)
+is flagged at the same lines and fails natively. Details in [docs/superlu.md](docs/superlu.md).
 
-**CUTLASS Stream-K.** On CUTLASS issue #2027, syncsan reports the known race between the middle split's `atomicAdd`
-and the final split's read in 3.6.0, which fails natively, and nothing in the fixed 3.7.0. Details in
+**CUTLASS Stream-K.** On CUTLASS issue #2027, syncsan reports the known race between the middle split's `atomicAdd` and
+the final split's read in 3.6.0, which fails natively, and nothing in the fixed 3.7.0. Details in
 [docs/cutlass-streamk.md](docs/cutlass-streamk.md).
 
-
-syncsan found an admission race in the [Magni VM](https://github.com/Bobliuuu/mvm) megakernel in one run, after 3,200
-test runs had passed; the fix is submitted as [Bobliuuu/mvm#97](https://github.com/Bobliuuu/mvm/pull/97). CUB's
-decoupled look-back scan, select and radix-histogram kernels check clean. In
-[open-flapping-airplanes](https://github.com/Bobliuuu/open-flapping-airplanes), which trains and serves a model and runs
-Doom in one kernel, the training handoffs are ordered by `__threadfence()`; the reported races are inference reading the
-weights while training updates them, which the demo does on purpose, a plain-store reset of a task counter, and the
-displayed loss.
+**Magni VM.** syncsan found an admission race in the [Magni VM](https://github.com/Bobliuuu/mvm) megakernel in one run,
+after 3,200 test runs had passed; the fix is submitted as [Bobliuuu/mvm#97](https://github.com/Bobliuuu/mvm/pull/97).
 
 ## Cost
 
-Most of the slowdown comes from NVBit's call at each instrumented access, not from the checks. Hazy's 4-token script
-takes 54 s under syncsan with every check on, against 14 s natively. A training megakernel whose 54 µs step is almost
-all global accesses runs about 9,000 times slower; `--sample` is the remedy there.
+NVBit's call at each instrumented access accounts for most of the slowdown. Hazy's 4-token script takes 54 s under
+syncsan with every check on, against 14 s natively. A training megakernel whose 54 µs step is almost all global accesses
+runs about 9,000 times slower; `--sample` is the remedy there.
 
 ## Prior work
 
 Adversarial memory comes from Jumble (Flanagan and Freund, PLDI 2010), which returned stale values allowed by the Java
 memory model to show that a race was harmful. Bugaroo (ISSRE 2018) brought stale values to GPUs through a recompiled
-binary and does not limit them to values the model allows. Happens-before race detection on GPUs goes back to iGUARD
-(SOSP 2021); Triton's GSan does it for global memory in Triton programs. syncsan does both on any CUDA binary,
-including CUDA C++, ThunderKittens, CUTLASS and inline PTX, with fences and Hopper async copies modeled.
-[docs/prior-work.md](docs/prior-work.md) covers the rest.
+binary and does not limit them to values the model allows. Happens-before race detection on GPU binaries goes back to
+Barracuda (PLDI 2017), with CURD (PLDI 2018) and iGUARD (SOSP 2021) after it; Triton's GSan does it for global memory in
+Triton programs, and SuperCollider (PLDI 2026) finds races by delaying reads in a recompiled binary. syncsan adds a
+model of Hopper and Blackwell async copies (TMA, bulk copies, `cp.async`, mbarriers) to binary happens-before checking,
+and turns the races it finds into outputs the model allows. [docs/prior-work.md](docs/prior-work.md) covers the rest.
 
 ## Reproducing the results
 
-[reproduce/](reproduce/) runs every result above on a rented H100 through Modal.
-`tests/run_tests.sh` runs the 37 known-answer cases on a local GPU.
+[reproduce/](reproduce/) reruns the Hazy, AutoMegaKernel, megakernel-zoo, Lucebox, Mirage, SuperLU_DIST and CUTLASS
+results on rented GPUs through Modal or Daytona. The cuHadron and Magni VM runs are not scripted here yet.
+`tests/run_tests.sh` runs the 37 known-answer cases and the two-stream check on a local GPU.
 
 ## Citing
 

@@ -13,7 +13,7 @@ H100, 4 greedy tokens of "The capital of France is", weights as stored in the ch
 
 | Build | Mode | Racing pairs | Output |
 |---|---|---|---|
-| 95e315c | native | | " Paris. The capital", the same as Hugging Face BF16 greedy; two runs bitwise equal |
+| 95e315c | native | |  Paris. The capital", the same as Hugging Face BF16 greedy for these 4 tokens (at 16 tokens the engine departs from it at token 13); two runs bitwise equal |
 | 95e315c | syncsan | 9 | |
 | 95e315c | adversarial | | "eses:es" (another run: "::s:"); logits differ by up to 23.6 to 27.9, at all 4 positions |
 | 95e315c | control | | bitwise equal to native |
@@ -35,15 +35,15 @@ bounded.
 ## Fix
 
 Add `__threadfence()` after each spin on `P.sync`: in `grid_barrier`, in the coordinator warp's barrier and in the
-`QKV_NOWAIT` wait. [reproduce/zoo/patch_sync.py](../reproduce/zoo/patch_sync.py) makes the change.
-`fence.acq_rel.gpu` or an `ld.acquire.gpu` poll would also work.
+`QKV_NOWAIT` wait. [reproduce/zoo/patch_sync.py](../reproduce/zoo/patch_sync.py) makes the change. `fence.acq_rel.gpu`
+or an `ld.acquire.gpu` poll would also work.
 
 ## On hardware
 
 2,000 native decodes of 16 tokens on an H100 gave the same tokens and bitwise-identical logits every time, in the
-original and the fixed build, so the race has not shown up on hardware. A step took 5,143 µs in the original and 5,063 µs
-with the fix, timed from Python, one run each on separate H100s, so the fix costs nothing measurable.
-`modal run reproduce/modal_zoo.py --modes stress --ntok 16` reruns it (add `--fixed acquire`).
+original and the fixed build, so the race has not shown up on hardware. A step took 5,143 µs in the original and 5,063
+µs with the fix, timed from Python, one run each on separate H100s, which is within the spread of one run. `modal run
+reproduce/modal_zoo.py --modes stress --ntok 16` reruns it (add `--fixed acquire`).
 
 ## Run settings
 

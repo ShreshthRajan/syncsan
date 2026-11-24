@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.1 (2026-11-24)
+
+Documentation corrections after a review against the run logs.
+
+- The stale-value claim now states its conditions (same-size races, every write to the word seen).
+- Limits are split into what can hide a race and what can produce a false report; new entries include the block-wide
+  release and acquire, the 16-bit barrier count, unchecked concurrent kernels and grids over 4,096 blocks.
+- Prior work: Barracuda (PLDI 2017) and CURD (PLDI 2018) before iGUARD; SuperCollider's cuHadron result beside syncsan's.
+- Corrected numbers: Hazy fix latencies (per-container pairs, +9.0% and +9.2%), compute-sanitizer on cuHadron (5 others),
+  CUTLASS 3.6.0 pairs (110). megakernel-zoo's engine departs from Hugging Face at token 13 of 16.
+- `tests/run_tests.sh` finds NVBit where `syncsan build` put it.
+
 ## 0.8.0 (2026-11-24)
 
 - One kernel at a time: a launch that starts while a checked kernel runs on another stream runs unchecked, with a

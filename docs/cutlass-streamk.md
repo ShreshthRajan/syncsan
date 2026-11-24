@@ -7,7 +7,7 @@ H100.
 
 | Version | Wrong results natively | Racing pairs |
 |---|---|---|
-| 3.6.0, K = 4096 | 50 of 50 runs | 110 to 114 (varies by run), one pattern |
+| 3.6.0, K = 4096 | 50 of 50 runs | 110, one pattern |
 | 3.7.0, K = 4096 | 0 of 140 runs (all K tested) | 0 |
 | either, K = 1024 (no tile gets three splits) | 0 | 0 |
 
