@@ -54,7 +54,7 @@ def run(mode: str, ntok: int, kernel: str, fixed: str, extra_env: str, ref: byte
         print(f"=== {name}: exit {rc}\n" + out[-6000:], flush=True); return rc, out   # streamed: survives a timeout
     if mode == "native":
         step("gpu", "nvidia-smi --query-gpu=name,driver_version --format=csv,noheader", 60)
-    if mode != "native" or fixed:
+    if mode not in ("native", "stress") or fixed:
         step("build_syncsan", "cd /work/syncsan && cmake -S . -B build -DNVBIT_ROOT=/opt/nvbit/nvbit_release_x86_64 "
              "-DNVBIT_TOOL_CUDA_ARCHITECTURES=90 && cmake --build build -j8 2>&1 | tail -3", 900)
     if fixed:
@@ -64,12 +64,13 @@ def run(mode: str, ntok: int, kernel: str, fixed: str, extra_env: str, ref: byte
     D = f"python /work/syncsan/reproduce/luce/drive.py {ntok}"
     T = "LD_PRELOAD=/work/syncsan/build/syncsan.so SYNCSAN_VERBOSE=1 SYNCSAN_SHARED=0" + (f" SYNCSAN_KERNEL={kernel}" if kernel else "") \
         + (f" {extra_env}" if extra_env else "")
-    keep = lambda out: " | ".join(l for l in out.splitlines() if l.startswith(("DRIVE", "syncsan: WARNING", "syncsan: ADVERSARIAL"))
+    keep = lambda out: " | ".join(l for l in out.splitlines() if l.startswith(("DRIVE", "STRESS", "syncsan: WARNING", "syncsan: ADVERSARIAL"))
                                   or ("distinct racing" in l) or "Error" in l)[:900]
     plan = {"native": [("native", f"cd /tmp && {D} /tmp/ref.pt --hf"), ("native2", f"cd /tmp && {D} /tmp/n2.pt /tmp/ref.pt")],
             "syncsan": [("syncsan", f"cd /tmp && env {T} {D} /tmp/s.pt /tmp/ref.pt")],
             "adversarial": [("adversarial", f"cd /tmp && env {T} SYNCSAN_ADVERSARIAL=1 {D} /tmp/a.pt /tmp/ref.pt")],
-            "control": [("control", f"cd /tmp && env {T} SYNCSAN_ADVERSARIAL=control {D} /tmp/c.pt /tmp/ref.pt")]}
+            "control": [("control", f"cd /tmp && env {T} SYNCSAN_ADVERSARIAL=control {D} /tmp/c.pt /tmp/ref.pt")],
+            "stress": [("stress", f"cd /tmp && python /work/syncsan/reproduce/luce/stress.py {ntok} 2000")]}
     for name, cmd in plan[mode]:
         rc, out = step(name, cmd, 600 if name.startswith("native") else 2400)
         summary[-1] += " | " + keep(out)

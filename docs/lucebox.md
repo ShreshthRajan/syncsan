@@ -35,6 +35,13 @@ Add `fence.acq_rel.gpu` (the file's `GPU_MEMORY_FENCE()`) after the generation s
 `atomicExch(counter, 0u)`. [reproduce/luce/patch_sync.py](../reproduce/luce/patch_sync.py) makes the change (`acquire`,
 `reset` or `both`).
 
+## On hardware
+
+2,000 native decodes of 16 tokens on an H100 gave the same tokens and bitwise-identical hidden states every time, in the
+original and the fixed build, so the race has not shown up on hardware. A step took 1,235 µs in the original and 1,254 µs
+with the fix, timed from Python, one run each on separate H100s, so the fix costs nothing measurable.
+`modal run reproduce/modal_luce.py --modes stress --ntok 16` reruns it (add `--fixed both`).
+
 ## Run settings
 
 `SYNCSAN_SHARED=0`, `SYNCSAN_KERNEL=decode_kernel` and `SYNCSAN_SKIP_OPS==LDG.E.NA.128`, which leaves the weight loads

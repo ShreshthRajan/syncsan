@@ -38,6 +38,13 @@ Add `__threadfence()` after each spin on `P.sync`: in `grid_barrier`, in the coo
 `QKV_NOWAIT` wait. [reproduce/zoo/patch_sync.py](../reproduce/zoo/patch_sync.py) makes the change.
 `fence.acq_rel.gpu` or an `ld.acquire.gpu` poll would also work.
 
+## On hardware
+
+2,000 native decodes of 16 tokens on an H100 gave the same tokens and bitwise-identical logits every time, in the
+original and the fixed build, so the race has not shown up on hardware. A step took 5,143 µs in the original and 5,063 µs
+with the fix, timed from Python, one run each on separate H100s, so the fix costs nothing measurable.
+`modal run reproduce/modal_zoo.py --modes stress --ntok 16` reruns it (add `--fixed acquire`).
+
 ## Run settings
 
 `SYNCSAN_SHARED=0` and `SYNCSAN_SKIP_OPS==LDG.E.LU.128`, which leaves the engine's weight loads (`WLOAD`) unchecked.

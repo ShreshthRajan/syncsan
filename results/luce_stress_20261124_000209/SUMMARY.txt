@@ -1,0 +1,5 @@
+gpu: exit 0
+native: exit 0 | DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is Paris.\nThe capital of France is' | DRIVE HF greedy: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] ' Paris.\nThe capital of France is Paris.\nThe capital of France is'; megakernel MATCHES HF
+native2: exit 0 | DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is Paris.\nThe capital of France is' | DRIVE vs native: tokens MATCH ([11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] vs [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden BITWISE, max|diff| 0, steps differing 0/16
+stress: exit 0 | STRESS 2000 decodes x 16 tokens: tokens differ in 0, hidden states differ in 0; 1234.7 us per step
+wall time 93 s

@@ -1,0 +1,9 @@
+gpu: exit 0
+build_syncsan: exit 0
+patch: exit 0
+native: exit 0 | DRIVE tokens: [12095, 13, 576, 6722, 315, 15344, 374, 21718, 13, 576, 6722, 315, 17689, 374, 24081, 13] text: ' Paris. The capital of Italy is Rome. The capital of Spain is Madrid.' | DRIVE HF greedy: [12095, 13, 576, 6722, 315, 15344, 374, 21718, 13, 576, 6722, 315, 9856, 374, 19846, 13] ' Paris. The capital of Italy is Rome. The capital of Germany is Berlin.'; engine DIFFERS FROM HF
+native2: exit 0 | DRIVE tokens: [12095, 13, 576, 6722, 315, 15344, 374, 21718, 13, 576, 6722, 315, 17689, 374, 24081, 13] text: ' Paris. The capital of Italy is Rome. The capital of Spain is Madrid.' | DRIVE vs native: tokens MATCH ([12095, 13, 576, 6722, 315, 15344, 374, 21718, 13, 576, 6722, 315, 17689, 374, 24081, 13] vs [12095, 13, 576, 6722, 315, 15344, 374, 21718, 13, 576, 6722, 315, 17689, 374, 24081, 13]); logits BITWISE, max|diff| 0, positions differing 0/16
+build_syncsan: exit 0
+patch: exit 0
+stress: exit 0 | STRESS 2000 decodes x 16 tokens: tokens differ in 0, logits differ in 0; 5063.2 us per step
+wall time 316 s
