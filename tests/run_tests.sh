@@ -5,7 +5,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 ARCH="${1:-sm_90}"   # the TMA, bulk-copy and mbarrier cases need sm_90 or newer
 cmake -S . -B build -DNVBIT_ROOT="$NVBIT_ROOT" -DNVBIT_TOOL_CUDA_ARCHITECTURES="${ARCH#sm_}" > build.log 2>&1 && cmake --build build -j >> build.log 2>&1 || { tail -40 build.log; exit 1; }
-nvcc -O2 -arch="$ARCH" -lineinfo -o build/race_cases tests/race_cases.cu -lcuda || exit 1
+nvcc -O2 -arch="$ARCH" -lineinfo -o build/race_cases tests/race_cases.cu -lcuda -lcuda || exit 1
 fail=0
 check() {  # case expect(racy|clean)
   out=$(LD_PRELOAD=$PWD/build/syncsan.so build/race_cases "$1" 2>&1); n=$(grep -c "syncsan: RACE" <<< "$out")
@@ -49,4 +49,9 @@ check cpasync_smem_racy racy
 check cpasync_smem_waited clean
 check bulk_store_smem_racy racy
 check bulk_store_smem_waited clean
+
+# two kernels at once on two streams: the first is checked, the second runs unchecked, and no race is reported
+nvcc -O2 -arch="$ARCH" -lineinfo -o build/concurrent_streams tests/concurrent_streams.cu || exit 1
+out=$(LD_PRELOAD=$PWD/build/syncsan.so build/concurrent_streams 2>&1)
+if [ "$(grep -c "syncsan: RACE" <<< "$out")" = 0 ] && grep -q "runs unchecked" <<< "$out"; then echo "PASS concurrent_streams (0 reports, second kernel unchecked)"; else echo "FAIL concurrent_streams"; echo "$out" | tail -20; fail=1; fi
 exit $fail

@@ -743,6 +743,17 @@ static void flush_tensor_maps() {   // mapped host memory: the device sees these
   g_tma_new.clear();
 }
 
+// One checked kernel at a time: the tables are reset at each checked launch, so a launch that starts while another
+// checked kernel still runs on another stream (Mirage's worker and scheduler kernels) would clear the running kernel's
+// state. Such a launch runs unchecked. g_busy_ev is recorded after each checked launch on its stream.
+static CUevent g_busy_ev = nullptr; static CUstream g_busy_stream = nullptr; static bool g_entry_on = false;
+static uint64_t g_concurrent_skipped = 0;
+static bool other_checked_kernel_running(CUstream stream) {
+  static const bool allow = getenv("SYNCSAN_ALLOW_CONCURRENT") != nullptr;   // the old behavior, for the regression test
+  if (allow || !g_busy_ev || stream == g_busy_stream) return false;
+  return cuEventQuery(g_busy_ev) == CUDA_ERROR_NOT_READY;
+}
+
 void nvbit_at_cuda_event(CUcontext ctx, int is_exit, nvbit_api_cuda_t cbid, const char* name, void* params, CUresult* status) {
   std::lock_guard<std::mutex> lock(g_mu);
   if (g_skip) return;
@@ -761,8 +772,22 @@ void nvbit_at_cuda_event(CUcontext ctx, int is_exit, nvbit_api_cuda_t cbid, cons
       break;
     default: break;
   }
+  if (func && is_exit && g_entry_on) {
+    if (!g_busy_ev) cuEventCreate(&g_busy_ev, CU_EVENT_DISABLE_TIMING);
+    if (g_busy_ev) { cuEventRecord(g_busy_ev, stream); g_busy_stream = stream; }
+    g_entry_on = false;
+  }
   if (func && !is_exit) {
     bool on = wanted(ctx, func);
+    if (on && other_checked_kernel_running(stream)) {
+      static std::unordered_set<CUfunction> warned;
+      if (warned.insert(func).second)
+        fprintf(stderr, "syncsan: WARNING: %s launched while another checked kernel runs on another stream; it runs unchecked "
+                        "(syncsan checks one kernel at a time; use SYNCSAN_KERNEL to pick which)\n", nvbit_get_func_name(ctx, func));
+      ++g_concurrent_skipped;
+      on = false;
+    }
+    g_entry_on = on;
     if (on && ctas > MAX_CTAS) {
       static std::unordered_set<CUfunction> warned;
       if (warned.insert(func).second && g_verbose)
@@ -823,6 +848,9 @@ void nvbit_at_term() {
   if (g_folded)
     fprintf(stderr, "syncsan: %llu launches had more than %u blocks; blocks b and b+%u shared a slot (races between those two are not reported)\n",
             (unsigned long long)g_folded, MAX_CTAS, MAX_CTAS);
+  if (g_concurrent_skipped)
+    fprintf(stderr, "syncsan: %llu launches ran unchecked: another checked kernel was running on another stream\n",
+            (unsigned long long)g_concurrent_skipped);
   if (*g_host.n_sync_dropped)
     fprintf(stderr, "syncsan: WARNING %u releases were not tracked (clock pool or sync table full): reports may include false races\n", *g_host.n_sync_dropped);
   fprintf(stderr, "syncsan: %llu instrumented launches, %zu distinct racing instruction pairs (%u race records%s), %u accesses untracked (shadow full)\n",
