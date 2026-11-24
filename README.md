@@ -11,7 +11,7 @@ which the PTX model still allows it to return. A race then becomes a wrong outpu
 The [low-latency Llama megakernel](https://github.com/HazyResearch/Megakernels) hands activations between SMs with a
 TMA store, a relaxed `atomicAdd` on a counter, a `volatile` spin and a read, with no gpu-scope fence, so the PTX model
 does not order the read after the store. syncsan reports 25 racing instruction pairs in one run, covering these
-handoff: Q, K and V into attention, attention output into o_proj, `silu_out` into the down-projection, and the residual
+handoffs: Q, K and V into attention, attention output into o_proj, `silu_out` into the down-projection, and the residual
 stream into the next RMS norm. On
 an H100, 8 tokens:
 
@@ -77,7 +77,8 @@ syncsan: RACE (write then read) at 0x2ba22b84c900
 
 `syncsan run --help` lists the options. The most useful ones: `--sample k` checks one plain load or store site in `k`
 (synchronization is always checked, so sampling can miss a race but cannot invent one), and `SYNCSAN_SHARED=0` turns
-off shared-memory checking. [examples/github-actions.yml](examples/github-actions.yml) runs syncsan in CI on a
+off shared-memory checking. `SYNCSAN_SKIP_OPS=PREFIX,...` (or `=OPCODE` for an exact match) leaves those
+memory opcodes unchecked, such as a model's weight loads, which no step writes. [examples/github-actions.yml](examples/github-actions.yml) runs syncsan in CI on a
 self-hosted GPU runner.
 
 ## What it checks
@@ -95,6 +96,15 @@ syncsan detects all six and compute-sanitizer none. syncsan does not check races
 distributed shared memory, or ordering between kernels, streams and host copies.
 
 ## Other results
+
+**megakernel-zoo and Lucebox.** Two LLM decode megakernels release correctly (a fence, then `atomicAdd` on a grid
+counter) but spin on the counter with a `volatile` load and no fence after it, so the waiter has no acquire. In
+[megakernel-zoo](https://github.com/dangxingyu/megakernel-zoo)'s Qwen3-8B engine syncsan reports 9 racing pairs and
+adversarial mode turns " Paris. The capital" into "eses:es"; in [Lucebox](https://github.com/Luce-Org/lucebox)'s
+Qwen3.5-0.8B megakernel it reports 107 pairs and the adversarial output is garbage at every step. In both, the control
+is bitwise equal to native, and a fence after the spin restores the correct output. Lucebox's barrier also resets its
+counter with a plain store that races with the other blocks' `atomicAdd`. Details in
+[docs/megakernel-zoo.md](docs/megakernel-zoo.md) and [docs/lucebox.md](docs/lucebox.md).
 
 **SuperLU_DIST.** The GPU triangular solve's fix for a dropped fence (commit 587f38f) restored the consumer's acquire
 but left the producer's release out: syncsan still reports 4 racing pairs, adversarial mode gives a wrong solution
@@ -131,7 +141,7 @@ including CUDA C++, ThunderKittens, CUTLASS and inline PTX, with fences and Hopp
 
 ## Reproducing the results
 
-[reproduce/](reproduce/) runs the known-answer tests and the Hazy experiments on a rented H100 through Modal.
+[reproduce/](reproduce/) runs every result above on a rented H100 through Modal.
 `tests/run_tests.sh` runs the 37 known-answer cases on a local GPU.
 
 ## Citing

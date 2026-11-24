@@ -1,2 +1,2 @@
 """syncsan: a happens-before race detector for persistent GPU kernels (NVBit tool). See `syncsan --help`."""
-__version__ = "0.6.0"
+__version__ = "0.7.0"

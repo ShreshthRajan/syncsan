@@ -16,6 +16,10 @@ $4 an hour there.
   The table in [docs/superlu.md](../docs/superlu.md) comes from this script.
 - `modal_cutlass.py` builds CUTLASS 3.6.0 and 3.7.0 with the reproducer from issue #2027 and runs it natively and under
   syncsan. The table in [docs/cutlass-streamk.md](../docs/cutlass-streamk.md) comes from this script.
+- `modal_zoo.py` and `modal_luce.py` run megakernel-zoo's Qwen3-8B engine and Lucebox's Qwen3.5-0.8B megakernel
+  natively, under syncsan, in adversarial mode and under the control; `--fixed acquire` (zoo) or `--fixed both`
+  (Lucebox) applies the fix in `zoo/patch_sync.py` or `luce/patch_sync.py`. The tables in
+  [docs/megakernel-zoo.md](../docs/megakernel-zoo.md) and [docs/lucebox.md](../docs/lucebox.md) come from these scripts.
 - `hazy_witness.py` is the native canary test in [docs/hazy-megakernel.md](../docs/hazy-megakernel.md): run it in place
   of `megakernels/scripts/generate.py`, with `CANARY=silu_out` or `CANARY=attn_out`, inside the image `modal_hazy.py`
   builds.

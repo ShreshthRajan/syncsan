@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.0 (2026-11-23)
+
+- megakernel-zoo (Qwen3-8B) and Lucebox (Qwen3.5-0.8B): missing acquires after grid-counter spins, shown as wrong
+  tokens in adversarial mode and fixed by a fence after the spin; Lucebox's plain-store counter reset. Results and
+  reproductions.
+- `SYNCSAN_SKIP_OPS` documented.
+- The source distribution includes the CUDA sources, so `python -m build` builds the wheel.
+
 ## 0.6.0 (2026-11-23)
 
 - One race record per instruction pair, deduplicated on the GPU. The record buffer used to fill with repeats of the
