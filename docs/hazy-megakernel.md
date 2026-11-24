@@ -67,7 +67,7 @@ stores `O`, and finishes the QOL page (`attention_partial.cu:647`) without waiti
 the LSE into `L_smem` in that page after arriving on `O_arrived` (`:543`). Nothing orders that store before the page is
 handed to the next instruction, whose loader TMA-loads into it; syncsan reports the consumer's `STS` against that TMA
 load (`upgate.cu:48` via `rms_lm_head.cu:99`). In the skip path nothing reads `L_smem`, so skipping the store, or
-waiting on `L_arrived` before finishing the page, removes the race. No wrong output has been observed from it.
+waiting on `L_arrived` before finishing the page, removes the race. No wrong output has been observed from it. Reported as [HazyResearch/Megakernels#17](https://github.com/HazyResearch/Megakernels/issues/17).
 
 ## The fix
 
