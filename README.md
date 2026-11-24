@@ -96,7 +96,11 @@ distributed shared memory, or ordering between kernels, streams and host copies.
 
 syncsan found an admission race in the [Magni VM](https://github.com/Bobliuuu/mvm) megakernel in one run, after 3,200
 test runs had passed; the fix is submitted as [Bobliuuu/mvm#97](https://github.com/Bobliuuu/mvm/pull/97). CUB's
-decoupled look-back scan, select and radix-histogram kernels check clean.
+decoupled look-back scan, select and radix-histogram kernels check clean. In
+[open-flapping-airplanes](https://github.com/Bobliuuu/open-flapping-airplanes), which trains and serves a model and runs
+Doom in one kernel, the training handoffs are ordered by `__threadfence()`; the reported races are inference reading the
+weights while training updates them, which the demo does on purpose, a plain-store reset of a task counter, and the
+displayed loss.
 
 ## Cost
 
