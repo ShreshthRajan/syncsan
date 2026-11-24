@@ -17,6 +17,13 @@ scoped atomics, for programs written in Triton. compute-sanitizer racecheck and 
 SuperCollider (PLDI 2026) instruments through ptxas and ignores synchronization operations. RESOLVE (arXiv 2610.05683)
 perturbs timing in megakernels under NVBit to expose races, without a happens-before relation. CUTracer injects delays.
 
+**Formal verification.** TensorLean (Columbia and CertiK, November 2026) proves data-race freedom, termination and
+functional correctness of PTX kernels against a tensor-level specification written in Lean for each kernel. It checked
+149 operator kernels from FlashAttention, DeepGEMM, Liger and others and reports 38 bugs, including a FlashAttention-4
+data race that 17,760 test runs missed. SF Tensor's PTX model in Lean (arXiv 2611.04447) proves smaller kernels
+correct, including acquire-release and async-proxy patterns. Both need a specification per kernel; syncsan needs none
+and runs whole persistent megakernels, at the cost of checking only the executions it observes.
+
 **What syncsan adds.** It checks any CUDA binary (CUDA C++, ThunderKittens, CUTLASS, inline PTX) with fences and
 `fence.sc` modeled, models the copy engine for TMA, bulk copies and `cp.async` in global and shared memory, and turns a
 race into a wrong output that the PTX model allows.

@@ -42,6 +42,11 @@ original and the fixed build, so the race has not shown up on hardware. A step t
 with the fix, timed from Python, one run each on separate H100s, so the fix costs nothing measurable.
 `modal run reproduce/modal_luce.py --modes stress --ntok 16` reruns it (add `--fixed both`).
 
+The same holds on a GeForce RTX 5090 (Blackwell, sm_120), the class of GPU Lucebox is written for. 20,000 native decodes
+of 16 tokens were all identical. syncsan reports 46 racing pairs there (the 5090 runs fewer blocks than the H100).
+Adversarial mode gives wrong tokens at 16 of 16 steps ("ываютτεύtret otrasikan…"), the control is bitwise equal to
+native, and with both fixes syncsan reports 0 pairs and the adversarial output is bitwise equal to native.
+
 ## Run settings
 
 `SYNCSAN_SHARED=0`, `SYNCSAN_KERNEL=decode_kernel` and `SYNCSAN_SKIP_OPS==LDG.E.NA.128`, which leaves the weight loads

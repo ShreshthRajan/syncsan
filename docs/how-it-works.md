@@ -47,7 +47,8 @@ named barriers over a subset of warps count as full barriers for global memory, 
 issued as done, each word keeps only its last reader, grids of more than 8,192 blocks share clock slots, a copy's
 shared-memory side is checked at one word per 128 bytes, and TMA loads are checked only on pages the launch has
 written. In global memory, ordering between warps of one block by anything other than a barrier is not modeled and can
-produce a false report. syncsan does not check races between lanes of one warp, distributed shared memory, ordering
+produce a false report. syncsan checks one kernel at a time: a kernel launched while a checked kernel is still running
+on another stream runs unchecked, with a warning, and `SYNCSAN_KERNEL` picks which one is checked. syncsan does not check races between lanes of one warp, distributed shared memory, ordering
 between kernels, streams and host copies, multi-GPU programs, im2col and multicast TMA, WGMMA and tcgen05 operand reads
 of shared memory, `fence.proxy.async`, or accesses smaller than 4 bytes. The PTX model does not define the outcome of
 races between accesses of different sizes; adversarial mode treats them like other races.

@@ -1,0 +1,41 @@
+=== setup  [08:47:00]
+NVIDIA GeForce RTX 5090, 595.91.07, 12.0
+=== lucebox  [08:47:30]
+=== native (fix=none)  [08:48:26]
+DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is Paris.\nThe capital of France is'
+DRIVE HF greedy: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] ' Paris.\nThe capital of France is Paris.\nThe capital of France is'; megakernel MATCHES HF
+DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is Paris.\nThe capital of France is'
+DRIVE vs native: tokens MATCH ([11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] vs [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden BITWISE, max|diff| 0, steps differing 0/16
+=== stress (fix=none)  [08:48:44]
+STRESS 20000 decodes x 16 tokens: tokens differ in 0, hidden states differ in 0; 1356.2 us per step
+=== syncsan (fix=none)  [08:57:54]
+DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is Paris.\nThe capital of France is'
+DRIVE vs native: tokens MATCH ([11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] vs [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden BITWISE, max|diff| 0, steps differing 0/16
+syncsan: 20 instrumented launches, 46 distinct racing instruction pairs (46 race records), 0 accesses untracked (shadow full)
+=== adversarial (fix=none)  [08:58:04]
+DRIVE tokens: [152011, 198940, 185247, 157185, 153659, 214061, 159463, 245879, 102576, 2029, 116495, 146741, 146652, 32014, 96021, 640] text: 'ываютτεύtret otrasikan Seluruhпадаkerne于一 fact安全工作借力一图 seiz量ary'
+DRIVE vs native: tokens DIFFER ([152011, 198940, 185247, 157185, 153659, 214061, 159463, 245879, 102576, 2029, 116495, 146741, 146652, 32014, 96021, 640] vs [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden differ, max|diff| 50.65, steps differing 16/16
+syncsan: ADVERSARIAL 50 load sites eligible (50 replaced), 214074961 loads returned the value before a racing write
+syncsan: 20 instrumented launches, 42 distinct racing instruction pairs (42 race records), 0 accesses untracked (shadow full)
+=== control (fix=none)  [09:01:47]
+DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is Paris.\nThe capital of France is'
+DRIVE vs native: tokens MATCH ([11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] vs [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden BITWISE, max|diff| 0, steps differing 0/16
+syncsan: ADVERSARIAL (control) 50 load sites eligible (50 replaced), 214054589 loads raced (given their current values)
+syncsan: 20 instrumented launches, 43 distinct racing instruction pairs (43 race records), 0 accesses untracked (shadow full)
+=== setup  [09:06:22]
+NVIDIA GeForce RTX 5090, 595.91.07, 12.0
+=== lucebox  [09:06:53]
+=== native (fix=both)  [09:07:45]
+DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is Paris.\nThe capital of France is'
+DRIVE HF greedy: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] ' Paris.\nThe capital of France is Paris.\nThe capital of France is'; megakernel MATCHES HF
+DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is Paris.\nThe capital of France is'
+DRIVE vs native: tokens MATCH ([11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] vs [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden BITWISE, max|diff| 0, steps differing 0/16
+=== syncsan (fix=both)  [09:08:04]
+DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is Paris.\nThe capital of France is'
+DRIVE vs native: tokens MATCH ([11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] vs [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden BITWISE, max|diff| 0, steps differing 0/16
+syncsan: 20 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+=== adversarial (fix=both)  [09:08:14]
+DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is Paris.\nThe capital of France is'
+DRIVE vs native: tokens MATCH ([11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] vs [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden BITWISE, max|diff| 0, steps differing 0/16
+syncsan: ADVERSARIAL 50 load sites eligible (50 replaced), 0 loads returned the value before a racing write
+syncsan: 20 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
