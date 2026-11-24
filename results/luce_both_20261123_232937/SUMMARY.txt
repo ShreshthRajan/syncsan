@@ -1,0 +1,15 @@
+gpu: exit 0
+build_syncsan: exit 0
+patch: exit 0
+native: exit 0 | DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is' | DRIVE HF greedy: [11751, 13, 198, 760, 6511, 314, 9338, 369] ' Paris.\nThe capital of France is'; megakernel MATCHES HF
+native2: exit 0 | DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is' | DRIVE vs native: tokens MATCH ([11751, 13, 198, 760, 6511, 314, 9338, 369] vs [11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden BITWISE, max|diff| 0, steps differing 0/8
+build_syncsan: exit 0
+patch: exit 0
+syncsan: exit 0 | DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is' | DRIVE vs native: tokens MATCH ([11751, 13, 198, 760, 6511, 314, 9338, 369] vs [11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden BITWISE, max|diff| 0, steps differing 0/8 | syncsan: 12 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+build_syncsan: exit 0
+patch: exit 0
+adversarial: exit 0 | DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is' | DRIVE vs native: tokens MATCH ([11751, 13, 198, 760, 6511, 314, 9338, 369] vs [11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden BITWISE, max|diff| 0, steps differing 0/8 | syncsan: ADVERSARIAL 133 load sites eligible (133 replaced), 0 loads returned the value before a racing write | syncsan: 12 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+build_syncsan: exit 0
+patch: exit 0
+control: exit 0 | DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is' | DRIVE vs native: tokens MATCH ([11751, 13, 198, 760, 6511, 314, 9338, 369] vs [11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden BITWISE, max|diff| 0, steps differing 0/8 | syncsan: ADVERSARIAL (control) 133 load sites eligible (133 replaced), 0 loads raced (given their current values) | syncsan: 12 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+wall time 131 s

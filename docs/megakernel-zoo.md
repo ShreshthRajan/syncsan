@@ -15,7 +15,7 @@ H100, 4 greedy tokens of "The capital of France is", weights as stored in the ch
 |---|---|---|---|
 | 95e315c | native | | " Paris. The capital", the same as Hugging Face BF16 greedy; two runs bitwise equal |
 | 95e315c | syncsan | 9 | |
-| 95e315c | adversarial | | "eses:es"; logits differ by up to 27.9, at all 4 positions |
+| 95e315c | adversarial | | "eses:es" (another run: "::s:"); logits differ by up to 23.6 to 27.9, at all 4 positions |
 | 95e315c | control | | bitwise equal to native |
 | `__threadfence()` after each spin | adversarial | 1 (the hint below) | bitwise equal to native |
 

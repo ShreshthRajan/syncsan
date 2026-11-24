@@ -1,0 +1,10 @@
+gpu: exit 0
+native: exit 0 | DRIVE tokens: [12095, 13, 576, 6722] text: ' Paris. The capital' | DRIVE HF greedy: [12095, 13, 576, 6722] ' Paris. The capital'; engine MATCHES HF
+native2: exit 0 | DRIVE tokens: [12095, 13, 576, 6722] text: ' Paris. The capital' | DRIVE vs native: tokens MATCH ([12095, 13, 576, 6722] vs [12095, 13, 576, 6722]); logits BITWISE, max|diff| 0, positions differing 0/4
+build_syncsan: exit 0
+syncsan: exit 0 | DRIVE tokens: [12095, 13, 576, 6722] text: ' Paris. The capital' | DRIVE vs native: tokens MATCH ([12095, 13, 576, 6722] vs [12095, 13, 576, 6722]); logits BITWISE, max|diff| 0, positions differing 0/4 | syncsan: 9 instrumented launches, 9 distinct racing instruction pairs (9 race records), 0 accesses untracked (shadow full)
+build_syncsan: exit 0
+adversarial: exit 0 | DRIVE tokens: [25, 25, 82, 25] text: '::s:' | DRIVE vs native: tokens DIFFER ([25, 25, 82, 25] vs [12095, 13, 576, 6722]); logits differ, max|diff| 23.58, positions differing 4/4 | syncsan: ADVERSARIAL 127 load sites eligible (127 replaced), 2428749 loads returned the value before a racing write | syncsan: 9 instrumented launches, 10 distinct racing instruction pairs (10 race records), 0 accesses untracked (shadow full)
+build_syncsan: exit 0
+control: exit 0 | DRIVE tokens: [12095, 13, 576, 6722] text: ' Paris. The capital' | DRIVE vs native: tokens MATCH ([12095, 13, 576, 6722] vs [12095, 13, 576, 6722]); logits BITWISE, max|diff| 0, positions differing 0/4 | syncsan: ADVERSARIAL (control) 127 load sites eligible (127 replaced), 2464034 loads raced (given their current values) | syncsan: 9 instrumented launches, 9 distinct racing instruction pairs (9 race records), 0 accesses untracked (shadow full)
+wall time 112 s

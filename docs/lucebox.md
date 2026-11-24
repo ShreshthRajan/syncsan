@@ -19,7 +19,7 @@ H100, 8 greedy tokens of "The capital of France is":
 |---|---|---|---|
 | a70ab3c | native | | " Paris.\nThe capital of France is", the same as Hugging Face; bitwise repeatable |
 | a70ab3c | syncsan | 107 | |
-| a70ab3c | adversarial | | "_x offID干的目nung)Ventas", wrong at all 8 steps |
+| a70ab3c | adversarial | | "_x offID干的目nung)Ventas" (another run: " costftenVEDingssienneszatccion的那样"), wrong at all 8 steps |
 | a70ab3c | control | | bitwise equal to native |
 | fence after the spin | adversarial | 9 (the reset, one per barrier site) | bitwise equal to native |
 | fence after the spin and `atomicExch` reset | adversarial | 0 | bitwise equal to native |
@@ -41,4 +41,4 @@ Add `fence.acq_rel.gpu` (the file's `GPU_MEMORY_FENCE()`) after the generation s
 (`load_128bit`) unchecked. Weights are never written during decode, so skipping them can hide no race in the
 activations. With the weight loads checked, one token took 1,099 s and the shadow table overflowed with weight words.
 `lm_head_kernel` was not checked; its waiter does have `__threadfence()` after the spin.
-[reproduce/modal_luce.py](../reproduce/modal_luce.py) reruns the table (`--fixed both` for the last row).
+[reproduce/modal_luce.py](../reproduce/modal_luce.py) reruns the table (`--fixed acquire` and `--fixed both` for the last two rows).
