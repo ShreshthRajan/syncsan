@@ -1,9 +1,12 @@
 # Changelog
 
-## 0.10.1 (2026-11-24)
+## 0.10.2 (2026-11-24)
 
 - SuperLU_DIST: the developers confirmed the incomplete fix syncsan found and fixed it in 239280c; syncsan reports 0
   pairs there and the adversarial solve is correct (`reproduce/daytona/superlu.sh`).
+
+## 0.10.1 (2026-11-24)
+
 - Native canary tests with positive controls (`reproduce/hazy_witness.py`, `reproduce/amk_canary.py`,
   `reproduce/luce/canary.py`): Hazy's `silu_out` handoff reads stale data on an H100 in 1,000 of 1,000 generations
   before the release/acquire fix and 0 of 1,000 after; Hazy's `attn_out`, AutoMegaKernel and Lucebox did not fail.

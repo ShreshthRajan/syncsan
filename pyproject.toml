@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "syncsan"
-version = "0.10.1"
+version = "0.10.2"
 description = "Finds data races in GPU megakernels and shows what they do to the output: happens-before checking and adversarial weak-memory execution for CUDA binaries"
 license = {text = "Apache-2.0"}
 readme = "README.md"
