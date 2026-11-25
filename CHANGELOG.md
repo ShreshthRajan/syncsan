@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.5 (2026-11-25)
+
+- Runs on compute capability 7.5 (T4, Colab's free GPU): `examples/colab.ipynb`. The known-answer tests skip the cases
+  that need sm_80 or sm_90 instructions; three kernels that broke the build below sm_90 are now guarded.
+- NVBit's startup banner and context-init warning are off by default.
+
 ## 0.10.4 (2026-11-24)
 
 - On PyPI: `pip install syncsan`, which also installs CMake 3.29 or newer.

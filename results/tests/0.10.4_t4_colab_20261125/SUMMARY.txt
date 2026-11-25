@@ -1,0 +1,8 @@
+Google Colab free tier, Tesla T4 (compute capability 7.5), syncsan main at e2152d2, Nov 25 2026.
+Read from the notebook output (examples/colab.ipynb plus one cell running tests/run_tests.sh sm_75).
+
+syncsan build --arch 75: built.
+examples/handoff.cu: native sum correct (32896); under syncsan 1 racing pair (handoff.cu:15 write, handoff.cu:26 read);
+adversarial sum 0, WRONG.
+tests/run_tests.sh sm_75: PASS 33, SKIP 18, FAIL 0. The 18 skipped cases use cp.async and mbarriers (sm_80) or
+bulk copies, TMA and fence.proxy.async (sm_90), which a T4 does not have.

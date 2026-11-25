@@ -11,11 +11,12 @@ survives testing.
 
 ## Quick start
 
-You need Linux, an NVIDIA GPU from the A100 onward, and CUDA 12.
+You need Linux, an NVIDIA GPU of compute capability 7.5 or newer (T4, RTX 20 series and later), and CUDA 12. It runs
+on Colab's free T4: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ShreshthRajan/syncsan/blob/main/examples/colab.ipynb)
 
 ```
 pip install syncsan
-syncsan build --arch 90          # once; use 100 for B200, 120 for RTX 50xx, 80 for A100
+syncsan build --arch 90          # once; your GPU's compute capability: 75 T4, 80 A100, 90 H100, 100 B200, 120 RTX 50xx
 syncsan run -- python generate.py
 ```
 
@@ -98,7 +99,8 @@ races between lanes of one warp, distributed shared memory, or ordering across k
 
 ## Tests
 
-`tests/run_tests.sh sm_90` runs 51 cases with known answers on a local GPU. [tests/cuhadron](tests/cuhadron/) adds six
+`tests/run_tests.sh sm_90` runs 51 cases with known answers on a local GPU. All 51 pass on an H100; on a T4, the 33 that
+don't need newer instructions pass and the other 18 are skipped. [tests/cuhadron](tests/cuhadron/) adds six
 cross-block synchronization tests to NVIDIA's [cuHadron](https://github.com/NVlabs/cuHadron) race benchmark.
 
 ## License
