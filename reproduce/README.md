@@ -1,27 +1,23 @@
 # Reproducing the results
 
-These scripts rent a GPU through [Modal](https://modal.com) (`pip install modal`, `modal setup`). An H100 costs about
-$4 an hour there.
+Each result reruns on a rented GPU through [Modal](https://modal.com) (`pip install modal && modal setup`) or
+[Daytona](https://www.daytona.io) (`DAYTONA_API_KEY=... python reproduce/daytona/run.py [--gpu H100|RTX-5090] SCRIPT.sh ARGS`).
+Daytona's `run.py` uploads this repository, runs the job script, and saves its output under `results/`.
 
-- `modal_cases.py` builds syncsan and runs the known-answer cases in `tests/` (about 2 minutes).
-- `modal_hazy.py` builds Hazy Research's Llama megakernel in its original form and with each fix, then prints the race
-  report, the adversarial and control outputs, and the latency of each build (about 30 minutes, most of it the image
-  build). The table in [docs/findings/hazy-megakernel.md](../docs/findings/hazy-megakernel.md) comes from this script.
-- `modal_amk.py` runs AutoMegaKernel's toy model with `--verify` natively, in adversarial mode, under the control, and
-  with an acquire in its counter wait (about 15 minutes). The table in [docs/findings/automegakernel.md](../docs/findings/automegakernel.md)
-  comes from this script.
-- `patch_hazy.py DIR fences|acqrel` writes the two fixes into a copy of `demos/low-latency-llama`.
-- `modal_superlu.py` builds SuperLU_DIST at the buggy commit, the official fix and the fix plus a producer fence, and
-  runs the GPU triangular solve natively, under syncsan, in adversarial mode and under the control (about 30 minutes).
-  The table in [docs/findings/superlu.md](../docs/findings/superlu.md) comes from this script.
-- `modal_cutlass.py` builds CUTLASS 3.6.0 and 3.7.0 with the reproducer from issue #2027 and runs it natively and under
-  syncsan. The table in [docs/findings/cutlass-streamk.md](../docs/findings/cutlass-streamk.md) comes from this script.
-- `modal_zoo.py` and `modal_luce.py` run megakernel-zoo's Qwen3-8B engine and Lucebox's Qwen3.5-0.8B megakernel
-  natively, under syncsan, in adversarial mode and under the control; `--fixed acquire` (zoo) or `--fixed both`
-  (Lucebox) applies the fix in `zoo/patch_sync.py` or `luce/patch_sync.py`. The tables in
-  [docs/findings/megakernel-zoo.md](../docs/findings/megakernel-zoo.md) and [docs/findings/lucebox.md](../docs/findings/lucebox.md) come from these scripts.
-- `hazy_witness.py` is the native canary test in [docs/findings/hazy-megakernel.md](../docs/findings/hazy-megakernel.md): run it in place
-  of `megakernels/scripts/generate.py`, with `CANARY=silu_out` or `CANARY=attn_out`, inside the image `modal_hazy.py`
-  builds.
-- `daytona/` runs the Mirage, Lucebox (RTX 5090) and megakernel-zoo jobs on [Daytona](https://www.daytona.io) GPU
-  sandboxes; see [daytona/README.md](daytona/README.md).
+| Result | Modal | Daytona | Write-up |
+|---|---|---|---|
+| Known-answer tests | `modal run reproduce/modal/cases.py` | `tests_job.sh` | [tests/](../tests/) |
+| Hazy Llama-1B | `modal run reproduce/modal/hazy.py` | `hazy_only.sh`, `hazy_witness.sh` (NaN canary) | [hazy-megakernel](../docs/findings/hazy-megakernel.md) |
+| AutoMegaKernel | `modal run reproduce/modal/amk.py` | `hazy_amk.sh`, `amk_canary.sh` | [automegakernel](../docs/findings/automegakernel.md) |
+| SuperLU_DIST | `modal run reproduce/modal/superlu.py` | `superlu.sh` | [superlu](../docs/findings/superlu.md) |
+| megakernel-zoo | `modal run reproduce/modal/zoo.py [--fixed acquire]` | `zoo.sh MODES FIX NTOK REPS` | [megakernel-zoo](../docs/findings/megakernel-zoo.md) |
+| Lucebox | `modal run reproduce/modal/luce.py [--fixed both]` | `luce.sh MODES FIX NTOK REPS`, `luce_canary.sh` | [lucebox](../docs/findings/lucebox.md) |
+| Mirage MPK | | `mirage.sh` | [mirage](../docs/findings/mirage.md) |
+| CUTLASS Stream-K | `modal run reproduce/modal/cutlass.py` | | [cutlass-streamk](../docs/findings/cutlass-streamk.md) |
+| Magni VM | | `magni.sh` | patches in [magni/](magni/) |
+| cuHadron | | `cuhadron.sh` | [tests/cuhadron](../tests/cuhadron/) |
+
+The per-project folders hold the patches and drivers the jobs use: `hazy/patch.py DIR fences|acqrel` writes the two
+Hazy fixes, `*/canary.py` are the NaN canary tests, and `zoo/`, `luce/` drive each engine's decode. Jobs that need
+torch use the `pytorch/pytorch` images (`--image pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel`), since Daytona's lower
+tiers cannot reach `pypi.nvidia.com`. `compile_check.sh` builds everything on a CPU sandbox (`--gpu none`).
