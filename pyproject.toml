@@ -4,11 +4,25 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "syncsan"
-version = "0.10.3"
+version = "0.10.4"
 description = "Finds data races in GPU megakernels and shows what each one does to your output."
 license = {text = "Apache-2.0"}
 readme = "README.md"
 requires-python = ">=3.9"
+dependencies = ["cmake>=3.29"]
+authors = [{name = "Shreshth Rajan"}]
+keywords = ["cuda", "gpu", "race detection", "megakernel", "ptx", "memory model", "nvbit", "sanitizer"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: GPU :: NVIDIA CUDA",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Debuggers",
+    "Topic :: Software Development :: Testing",
+]
 
 [project.scripts]
 syncsan = "syncsan.cli:main"

@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.10.4 (2026-11-24)
+
+- On PyPI: `pip install syncsan`, which also installs CMake 3.29 or newer.
 
 - Repository reorganized: tool sources in `src/`, findings in `docs/findings/`, runners in `reproduce/` (one table,
   Modal scripts in `reproduce/modal/`), result summaries grouped by project in `results/`, and the cuHadron category

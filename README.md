@@ -60,10 +60,12 @@ release/acquire fixes it at a 9% latency cost
 The other finds:
 
 - [AutoMegaKernel](https://github.com/RightNow-AI/AutoMegaKernel) waits with `atomicAdd(c, 0)`, which a comment calls
-  an acquire but PTX treats as relaxed. In adversarial mode its own `--verify` check fails.
+  an acquire but PTX treats as relaxed. In adversarial mode its own `--verify` check fails
+  ([RightNow-AI/AutoMegaKernel#6](https://github.com/RightNow-AI/AutoMegaKernel/issues/6)).
 - [megakernel-zoo](https://github.com/dangxingyu/megakernel-zoo) and [Lucebox](https://github.com/Luce-Org/lucebox)
   release correctly but spin on a `volatile` load with no fence after it. In both, the adversarial output is garbage
-  and a fence after the spin fixes it.
+  and a fence after the spin fixes it ([dangxingyu/megakernel-zoo#3](https://github.com/dangxingyu/megakernel-zoo/issues/3),
+  [Luce-Org/lucebox#1075](https://github.com/Luce-Org/lucebox/issues/1075)).
 - [Mirage MPK](https://github.com/mirage-project/mirage)'s argmax reduction has no barrier between warp 0 reading the
   per-warp maxima and the other warps writing the next row's
   ([mirage-project/mirage#843](https://github.com/mirage-project/mirage/issues/843)).
