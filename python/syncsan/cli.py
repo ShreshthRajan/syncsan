@@ -56,6 +56,8 @@ def run(a: argparse.Namespace) -> int:
     env = dict(os.environ)
     env["LD_PRELOAD"] = f"{so}:{env['LD_PRELOAD']}" if env.get("LD_PRELOAD") else str(so)
     env["SYNCSAN_EXITCODE"] = str(a.exitcode)
+    env.setdefault("NOBANNER", "1")                   # NVBit's startup banner
+    env.setdefault("ACK_CTX_INIT_LIMITATION", "1")    # NVBit's warning about allocating at context init, which syncsan does safely
     for flag, var in ((a.kernel, "SYNCSAN_KERNEL"), (a.sample, "SYNCSAN_SAMPLE"), (a.instrument, "SYNCSAN_INSTRUMENT"),
                       (a.async_, "SYNCSAN_ASYNC")):
         if flag:
