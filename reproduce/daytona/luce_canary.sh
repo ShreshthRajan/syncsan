@@ -12,3 +12,11 @@ cd /tmp && python /work/syncsan/reproduce/luce/canary.py $NTOK $R 2>&1 | tee /wo
 step lucebox-fixed
 python /work/syncsan/reproduce/luce/patch_sync.py $MK/kernel.cu both && build fixed
 cd /tmp && python /work/syncsan/reproduce/luce/canary.py $NTOK $R 2>&1 | tee /work/out/canary_fixed.log | grep -a CANARY
+step lucebox-control
+cd /opt/luce && git checkout -q $MK/kernel.cu && python3 - <<'PY'
+import pathlib; p = pathlib.Path('/opt/luce/optimizations/megakernel/kernel.cu'); s = p.read_text()
+old = "                while (*vgen <= my_gen) {}\n"
+assert old in s; p.write_text(s.replace(old, "                // canary control: no wait\n")); print('patched')
+PY
+build control
+cd /tmp && timeout 600 python /work/syncsan/reproduce/luce/canary.py $NTOK 20 2>&1 | tee /work/out/canary_control.log | grep -a CANARY

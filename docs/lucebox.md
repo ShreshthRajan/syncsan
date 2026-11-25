@@ -51,7 +51,8 @@ model allows, given the orderings syncsan models and matching element types. The
 With both fixes (syncsan 0.8) syncsan reports 0 pairs and the adversarial output is bitwise equal to native.
 
 A NaN canary in the five scratch buffers before every step (`reproduce/luce/canary.py`, RTX 5090, 1,000 decodes of 16
-tokens) was read in 0 decodes of the original and 0 of the fixed build (`results/luce_canary_rtx5090_20261124`).
+tokens) was read in 0 decodes of the original and 0 of the fixed build; a control build with the grid-barrier wait removed
+read it in 20 of 20 decodes, so the test can fire (`results/luce_canary_rtx5090_20261124`).
 
 ## Run settings
 

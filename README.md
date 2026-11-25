@@ -115,6 +115,24 @@ ones fall back to one clock per block). syncsan checks one kernel at a time and 
 one warp, distributed shared memory, or ordering between kernels, streams and host copies. The full list of what can
 hide a race or produce a false report is in [docs/how-it-works.md](docs/how-it-works.md).
 
+## On hardware
+
+Adversarial mode shows what a race permits. Whether a race also fails on today's GPUs is a separate measurement: before
+every decode step or launch, the buffers a race involves are filled with NaN; a correct kernel overwrites them before any
+read, so a NaN in the output means a consumer read before the producer's writes were visible. Each test has a positive
+control, a build with the wait removed, to show the canary can fire. No instrumentation runs during these tests.
+
+| Kernel, buffer | GPU | Original | Fixed | Control (wait removed) |
+|---|---|---|---|---|
+| Hazy, `silu_out` (#15's handoff) | H100 | 1,000 of 1,000 generations | 0 of 1,000 | (the original) |
+| Hazy, `attn_out` | H100 | 0 of 1,000 | 0 of 1,000 | |
+| AutoMegaKernel, activation arena | H100 | 0 of 200 | 0 of 200 | 20 of 20 |
+| Lucebox, five scratch buffers | RTX 5090 | 0 of 1,000 | 0 of 1,000 | 20 of 20 |
+
+The CUTLASS 3.6.0 race (50 of 50 runs wrong) and the SuperLU_DIST race before its fix (wrong solutions) also fail
+natively. The other races syncsan reports have not failed in these tests; for them the evidence is what the PTX model
+allows. Summaries are in `results/*canary*` and `results/hazy_witness_nan_20261124`.
+
 ## Other results
 
 **megakernel-zoo and Lucebox.** Two LLM decode megakernels release correctly (a fence, then `atomicAdd` on a grid
