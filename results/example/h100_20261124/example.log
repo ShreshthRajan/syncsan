@@ -1,0 +1,19 @@
+--- racy native
+sum = 32896 (expected 32896): correct
+--- racy syncsan
+syncsan: RACE (write then read) at 0x7ef8ffe00300
+  block 1 warp 2: STG.E desc[UR6][R2.64], R5 ;  [handoff(unsigned int*, int*, int*)+0x1e0 handoff.cu:15]
+  block 0 warp 2: LDG.E R2, desc[UR6][R2.64] ;  [handoff(unsigned int*, int*, int*)+0x120 handoff.cu:26]
+syncsan: 1 instrumented launches, 1 distinct racing instruction pairs (1 race records), 0 accesses untracked (shadow full)
+sum = 32896 (expected 32896): correct
+--- racy adversarial
+syncsan: ADVERSARIAL 0 substituted words were last written by an access of another width (a vector, bulk or TMA access against a narrower or wider one: a mixed-size race if the element types differ, which SASS does not show); 0 words left alone (a sub-word write after the recorded one, or the record changing while read)
+sum = 0 (expected 32896): WRONG
+--- fixed native
+sum = 32896 (expected 32896): correct
+--- fixed syncsan
+syncsan: 1 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+sum = 32896 (expected 32896): correct
+--- fixed adversarial
+syncsan: ADVERSARIAL 0 substituted words were last written by an access of another width (a vector, bulk or TMA access against a narrower or wider one: a mixed-size race if the element types differ, which SASS does not show); 0 words left alone (a sub-word write after the recorded one, or the record changing while read)
+sum = 32896 (expected 32896): correct
