@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.1 (2026-11-24)
+
+- Native canary tests with positive controls (`reproduce/hazy_witness.py`, `reproduce/amk_canary.py`,
+  `reproduce/luce/canary.py`): Hazy's `silu_out` handoff reads stale data on an H100 in 1,000 of 1,000 generations
+  before the release/acquire fix and 0 of 1,000 after; Hazy's `attn_out`, AutoMegaKernel and Lucebox did not fail.
+- Magni VM rerun on 0.10: 64 racing pairs before the fix, 0 after.
+
 ## 0.10.0 (2026-11-24)
 
 - `fence.proxy.async`: a bulk or TMA store that reads shared memory written by a warp with no proxy fence in the block

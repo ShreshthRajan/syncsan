@@ -31,3 +31,7 @@ written by an access of the same width; syncsan left 5 instructions unchecked be
 warns that an unseen write there could make a value one the model forbids.
 [reproduce/daytona/hazy_amk.sh](../reproduce/daytona/hazy_amk.sh) reruns the table on Daytona,
 [reproduce/modal_amk.py](../reproduce/modal_amk.py) on Modal.
+
+On hardware: with the activation arena filled with NaN before every launch (`reproduce/amk_canary.py`), 0 of 200
+generations of the original and 0 of 200 of the fixed build read it on an H100, and a control build whose waits return at
+once read it in 20 of 20 (`results/amk_canary_20261124`).

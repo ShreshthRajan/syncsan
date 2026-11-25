@@ -150,8 +150,8 @@ writing the next row's, so a warp that runs ahead could change another row's tok
 (prefill, batching, speculative decoding) and did not show up in our greedy runs. Mirage runs its worker and scheduler
 kernels at once, which exposed a syncsan bug (fixed in 0.8.0). Details in [docs/mirage.md](docs/mirage.md).
 
-These results, the Hazy rerun and the reruns on RTX 5090 are on syncsan 0.9 (`results/*_0.9_*`); SuperLU_DIST, CUTLASS
-and Magni VM below were measured with 0.6 to 0.8.
+These results, the Hazy rerun and the reruns on RTX 5090 are on syncsan 0.9 (`results/*_0.9_*`); SuperLU_DIST and CUTLASS
+below were measured with 0.6 to 0.8.
 
 **SuperLU_DIST.** The GPU triangular solve's fix for a dropped fence (commit 587f38f) restored the consumer's acquire
 but left the producer's release out: syncsan still reports 4 racing pairs, adversarial mode gives a wrong solution
@@ -163,7 +163,8 @@ the final split's read in 3.6.0, which fails natively, and nothing in the fixed 
 [docs/cutlass-streamk.md](docs/cutlass-streamk.md).
 
 **Magni VM.** syncsan found an admission race in the [Magni VM](https://github.com/Bobliuuu/mvm) megakernel in one run,
-after 3,200 test runs had passed; the fix is submitted as [Bobliuuu/mvm#97](https://github.com/Bobliuuu/mvm/pull/97).
+after 3,200 test runs had passed; the fix is submitted as [Bobliuuu/mvm#97](https://github.com/Bobliuuu/mvm/pull/97). On syncsan 0.10 the stage suite
+shows 64 racing pairs before the fix and 0 after (`results/magni_0.10_20261124`, `reproduce/daytona/magni.sh`).
 
 ## Cost
 
