@@ -60,6 +60,23 @@ generations outside the two token sequences both builds produce most often: 43 o
 for the release/acquire build (Fisher exact p = 1.7e-8). The same test on `attn_out` gave 23 against 11 (p = 0.05),
 which does not separate the builds at this sample size.
 
+## On hardware
+
+A native test with no instrumentation, following #15's method with a stronger canary: before every decode step,
+`reproduce/hazy_witness.py` fills one buffer with NaN. Every op that reads the buffer runs after the op that writes it,
+so a correct kernel never reads the NaN; one stale read anywhere turns the logits into NaN. 1,000 generations of 64
+tokens per build, H100 (`results/hazy_witness_nan_20261124`):
+
+| Buffer | Original | Release/acquire build |
+|---|---|---|
+| `silu_out` (up/gate to down-projection, #15's handoff) | NaN in 1,000 of 1,000 generations | 0 of 1,000 |
+| `attn_out` (attention to o_proj) | 0 of 1,000 | 0 of 1,000 |
+
+So on an H100 the down-projection reads `silu_out` before the up/gate op's writes are visible in every generation,
+nearly always on the first decode step; #15's 2.6% counts the generations in which the stale value also changed a token.
+The `attn_out` handoff, read through TMA and `cp.async`, did not fail.
+[reproduce/daytona/hazy_witness.sh](../reproduce/daytona/hazy_witness.sh) reruns the table.
+
 ## A second race: the QOL page
 
 With `skip_attn_reduction` set, which is the default (`scheduler.py:40`), the attention storer waits on `O_arrived`,
@@ -67,7 +84,8 @@ stores `O`, and finishes the QOL page (`attention_partial.cu:647`) without waiti
 the LSE into `L_smem` in that page after arriving on `O_arrived` (`:543`). Nothing orders that store before the page is
 handed to the next instruction, whose loader TMA-loads into it; syncsan reports the consumer's `STS` against that TMA
 load (`upgate.cu:48` via `rms_lm_head.cu:99`). In the skip path nothing reads `L_smem`, so skipping the store, or
-waiting on `L_arrived` before finishing the page, removes the race. No wrong output has been observed from it. Reported as [HazyResearch/Megakernels#17](https://github.com/HazyResearch/Megakernels/issues/17).
+waiting on `L_arrived` before finishing the page, removes the race. No wrong output has been observed from it. Reported
+as [HazyResearch/Megakernels#17](https://github.com/HazyResearch/Megakernels/issues/17).
 
 ## The fix
 

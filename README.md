@@ -28,11 +28,13 @@ The wrong text changes from run to run (earlier runs printed " insideuccarnochum
 "wedchuntghtunday造成uarios"); every run was wrong. Hazy's handoffs are TMA box stores read by 16-byte loads. PTX models a
 vector or bulk access as accesses of its element type, and the machine code does not show element types, so syncsan
 cannot tell whether these races are uniform-size (where the model allows the stale value) or mixed-size (where it
-defines no outcome); the native evidence that they matter is #15's, below. Hazy's native decode is not bitwise
-repeatable across runs, so the comparison is on the text. The control run redirects the same loads but hands them their
-current values, which rules out the redirection itself as the cause. Making the counters `red.release.gpu` and
-`ld.acquire.gpu` removes every global-memory report and costs 9% in latency (two runs, each against the original in the
-same container). The analysis and the fix are in [docs/hazy-megakernel.md](docs/hazy-megakernel.md) and in
+defines no outcome); on hardware, a NaN canary in `silu_out` is read in 1,000 of 1,000 generations of the original and 0
+of 1,000 of the fixed build (the handoff #15 found), and a canary in `attn_out` in none of either. Hazy's native decode
+is not bitwise repeatable across runs, so the comparison is on the text. The control run redirects the same loads but
+hands them their current values, which rules out the redirection itself as the cause. Making the counters
+`red.release.gpu` and `ld.acquire.gpu` removes every global-memory report and costs 9% in latency (two runs, each
+against the original in the same container). The analysis and the fix are in
+[docs/hazy-megakernel.md](docs/hazy-megakernel.md) and in
 [HazyResearch/Megakernels#16](https://github.com/HazyResearch/Megakernels/issues/16). The same missing release/acquire
 was found earlier by hand in [#15](https://github.com/HazyResearch/Megakernels/issues/15), on the up/gate to
 down-projection handoff, where it changes tokens in 2.6% of generations on real H100s.

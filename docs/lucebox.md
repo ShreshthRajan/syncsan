@@ -50,6 +50,9 @@ same width (4-byte stores and loads), and syncsan left no write unchecked, so ea
 model allows, given the orderings syncsan models and matching element types. The control is bitwise equal to native.
 With both fixes (syncsan 0.8) syncsan reports 0 pairs and the adversarial output is bitwise equal to native.
 
+A NaN canary in the five scratch buffers before every step (`reproduce/luce/canary.py`, RTX 5090, 1,000 decodes of 16
+tokens) was read in 0 decodes of the original and 0 of the fixed build (`results/luce_canary_rtx5090_20261124`).
+
 ## Run settings
 
 `SYNCSAN_SHARED=0`, `SYNCSAN_KERNEL=decode_kernel` and `SYNCSAN_SKIP_OPS==LDG.E.NA.128`, which leaves the weight loads

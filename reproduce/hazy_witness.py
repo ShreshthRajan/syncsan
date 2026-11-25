@@ -17,13 +17,16 @@ import torch
 import megakernels.generators as G
 
 CANARY = os.environ.get("CANARY", "")
+# CANARY_VALUE=nan: a stale read of the canary turns the logits into NaN, which the run detects on its own; with 1e4,
+# RMS normalization removes the magnitude and the canary shows only as changed tokens.
+CANARY_VALUE = float(os.environ.get("CANARY_VALUE", "1e4"))
 seqs = []
 
 _fill = G.MK_Generator.fill
 def fill(self):
     _fill(self)
     if CANARY:
-        getattr(self.schedule.globs, CANARY).fill_(1e4)
+        getattr(self.schedule.globs, CANARY).fill_(CANARY_VALUE)
 G.MK_Generator.fill = fill
 
 # A step that read the canary shows it in the logits: 1e4 in an activation gives logits far above the normal range.
@@ -49,7 +52,7 @@ G.MK_Generator.generate = generate
 
 def report():
     c = collections.Counter(seqs)
-    print(f"WITNESS canary={CANARY or 'none'} generations={len(seqs)} distinct={len(c)} "
+    print(f"WITNESS canary={CANARY or 'none'} value={CANARY_VALUE} generations={len(seqs)} distinct={len(c)} "
           f"canary_steps={sum(big_steps)}/{len(big_steps)} canary_generations={sum(hit_gens)}/{len(hit_gens)}")
     for s, n in c.most_common(4):
         print(f"WITNESS {n} x {list(s[:16])}")
