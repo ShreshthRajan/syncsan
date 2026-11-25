@@ -9,7 +9,7 @@ block-diagonal), solution error ||X - Xtrue||/||X|| printed by the driver, SUPER
 iterative refinement (-i 0). A run's args may start with VAR=value overrides (e.g. SUPERLU_RELAX=4 SUPERLU_MAXSUP=16
 for many small supernodes, so many cross-block fmod/bmod dependencies). The batched drivers (-b) need MAGMA, so they are not used.
 
-    modal run reproduce/modal_superlu.py [--native "..."] [--san "..."]
+    modal run reproduce/modal/superlu.py [--native "..."] [--san "..."]
 """
 import pathlib
 import subprocess
@@ -17,7 +17,7 @@ import time
 
 import modal
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 NVBIT = "https://github.com/NVlabs/NVBit/releases/download/v1.8.2/nvbit-Linux-x86_64-1.8.2.tar.bz2"
 BUILDS = {"bug": "4755a5e116b6ebae8b92ff13e9b77f0b145d23bd", "fix": "587f38f6dc14c29c1f6f7f14d68dde3080a081c0",
           "fixrel": "587f38f6dc14c29c1f6f7f14d68dde3080a081c0"}
@@ -74,7 +74,7 @@ def run(native: list, san: str, kernel: str, builds: list, modes: list) -> dict:
     step("matrices", "cd /tmp && python3 /work/syncsan/reproduce/superlu/gen_mtx.py lap2d 64 lap64.mtx && "
          "python3 /work/syncsan/reproduce/superlu/gen_mtx.py lap2d 160 lap160.mtx && python3 /work/syncsan/reproduce/superlu/gen_mtx.py blockdiag 256 40 bd256.mtx && "
          "python3 /work/syncsan/reproduce/superlu/gen_mtx.py blockdiag 16 40 bd16.mtx", 300)
-    step("build_syncsan", "cd /work/syncsan && cmake -S . -B build -DNVBIT_ROOT=/opt/nvbit/nvbit_release_x86_64 "
+    step("build_syncsan", "cd /work/syncsan && cmake -S src -B build -DNVBIT_ROOT=/opt/nvbit/nvbit_release_x86_64 "
          "-DNVBIT_TOOL_CUDA_ARCHITECTURES=90 && cmake --build build -j8", 900)
     T = "LD_PRELOAD=/work/syncsan/build/syncsan.so SYNCSAN_VERBOSE=1 SYNCSAN_SHARED=0" + (f" SYNCSAN_KERNEL={kernel}" if kernel else "")
     keep = lambda out: " | ".join(l.strip() for l in out.splitlines() if any(k in l for k in (
@@ -96,7 +96,7 @@ def main(native: str = "SUPERLU_RELAX=4 SUPERLU_MAXSUP=16 ./pddrive3d -i 0 /tmp/
          builds: str = "bug,fix,fixrel", modes: str = "syncsan,adversarial,control", tag: str = ""):
     t0 = time.time()
     res = run.remote([a for a in native.split(";") if a], san, kernel, builds.split(","), modes.split(","))
-    out = ROOT / "results" / time.strftime(f"superlu{'_' + tag if tag else ''}_%Y%m%d_%H%M%S")
+    out = ROOT / "results" / "superlu" / time.strftime(f"superlu{'_' + tag if tag else ''}_%Y%m%d_%H%M%S")
     out.mkdir(parents=True, exist_ok=True)
     for name, text in res["logs"].items():
         (out / f"{name}.log").write_text(text)

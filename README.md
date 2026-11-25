@@ -15,7 +15,7 @@ store, a relaxed `atomicAdd` on a counter, a `volatile` spin and a read, with no
 not order the read after the store. syncsan reports 25 racing instruction pairs in global memory, covering these
 handoffs: Q, K and V into attention, attention output into o_proj, `silu_out` into the down-projection, and the residual
 stream into the next RMS norm, and one pair in shared memory from a second race, in how the QOL page is recycled
-([docs/hazy-megakernel.md](docs/hazy-megakernel.md)). On an H100, 8 tokens:
+([docs/findings/hazy-megakernel.md](docs/findings/hazy-megakernel.md)). On an H100, 8 tokens:
 
 | Build | Mode | Loads given an older value | Output |
 |---|---|---|---|
@@ -34,7 +34,7 @@ is not bitwise repeatable across runs, so the comparison is on the text. The con
 hands them their current values, which rules out the redirection itself as the cause. Making the counters
 `red.release.gpu` and `ld.acquire.gpu` removes every global-memory report and costs 9% in latency (two runs, each
 against the original in the same container). The analysis and the fix are in
-[docs/hazy-megakernel.md](docs/hazy-megakernel.md) and in
+[docs/findings/hazy-megakernel.md](docs/findings/hazy-megakernel.md) and in
 [HazyResearch/Megakernels#16](https://github.com/HazyResearch/Megakernels/issues/16). The same missing release/acquire
 was found earlier by hand in [#15](https://github.com/HazyResearch/Megakernels/issues/15), on the up/gate to
 down-projection handoff, where it changes tokens in 2.6% of generations on real H100s.
@@ -55,7 +55,7 @@ H100):
 
 Every substituted word here was last written by an access of the same width as the load. syncsan left 5 instructions
 unchecked because of the sm_90 NVBit hazard, so it warns that an unseen write could make a value one the model forbids.
-Details in [docs/automegakernel.md](docs/automegakernel.md).
+Details in [docs/findings/automegakernel.md](docs/findings/automegakernel.md).
 
 ## Install
 
@@ -131,7 +131,7 @@ control, a build with the wait removed, to show the canary can fire. No instrume
 
 The CUTLASS 3.6.0 race (50 of 50 runs wrong) and the SuperLU_DIST race before its fix (wrong solutions) also fail
 natively. The other races syncsan reports have not failed in these tests; for them the evidence is what the PTX model
-allows. Summaries are in `results/*canary*` and `results/hazy_witness_nan_20261124`.
+allows. Summaries are in `results/*canary*` and `results/hazy/canary_nan_20261124`.
 
 ## Other results
 
@@ -142,13 +142,13 @@ adversarial mode turns " Paris. The capital" into "_ and of["; in [Lucebox](http
 Qwen3.5-0.8B megakernel it reports 72 pairs on an RTX 5090 and the adversarial output is wrong at every step. In both,
 the control is bitwise equal to native, and a fence after the spin restores the correct output. Lucebox's barrier also
 resets its counter with a plain store that races with the other blocks' `atomicAdd`. Details in
-[docs/megakernel-zoo.md](docs/megakernel-zoo.md) and [docs/lucebox.md](docs/lucebox.md).
+[docs/findings/megakernel-zoo.md](docs/findings/megakernel-zoo.md) and [docs/findings/lucebox.md](docs/findings/lucebox.md).
 
 **Mirage MPK.** In Mirage's persistent megakernel (Qwen3-1.7B, H100), syncsan reports a shared-memory race in the argmax
 reduction: it runs once per batch row with no barrier between warp 0 reading the per-warp maxima and the other warps
 writing the next row's, so a warp that runs ahead could change another row's token. It needs several rows in one task
 (prefill, batching, speculative decoding) and did not show up in our greedy runs. Mirage runs its worker and scheduler
-kernels at once, which exposed a syncsan bug (fixed in 0.8.0). Details in [docs/mirage.md](docs/mirage.md).
+kernels at once, which exposed a syncsan bug (fixed in 0.8.0). Details in [docs/findings/mirage.md](docs/findings/mirage.md).
 
 These results, the Hazy rerun and the reruns on RTX 5090 are on syncsan 0.9 (`results/*_0.9_*`); CUTLASS below was measured with 0.6; the SuperLU_DIST fix check is on 0.10.
 
@@ -157,15 +157,15 @@ but left the producer's release out: syncsan reported 4 racing pairs, and advers
 about 0.7). The SuperLU_DIST developers confirmed it in [xiaoyeli/superlu_dist#261](https://github.com/xiaoyeli/superlu_dist/issues/261)
 and fixed it the same day in 239280c, with a release fence before each producer's decrement in the double, single and
 complex solves. On 239280c syncsan reports 0 pairs and the adversarial solve is correct (error 6e-15). The original bug
-(4755a5e) is flagged at the same lines and fails natively. Details in [docs/superlu.md](docs/superlu.md).
+(4755a5e) is flagged at the same lines and fails natively. Details in [docs/findings/superlu.md](docs/findings/superlu.md).
 
 **CUTLASS Stream-K.** On CUTLASS issue #2027, syncsan reports the known race between the middle split's `atomicAdd` and
 the final split's read in 3.6.0, which fails natively, and nothing in the fixed 3.7.0. Details in
-[docs/cutlass-streamk.md](docs/cutlass-streamk.md).
+[docs/findings/cutlass-streamk.md](docs/findings/cutlass-streamk.md).
 
 **Magni VM.** syncsan found an admission race in the [Magni VM](https://github.com/Bobliuuu/mvm) megakernel in one run,
 after 3,200 test runs had passed; the fix is submitted as [Bobliuuu/mvm#97](https://github.com/Bobliuuu/mvm/pull/97). On syncsan 0.10 the stage suite
-shows 64 racing pairs before the fix and 0 after (`results/magni_0.10_20261124`, `reproduce/daytona/magni.sh`).
+shows 64 racing pairs before the fix and 0 after (`results/magni/0.10_20261124`, `reproduce/daytona/magni.sh`).
 
 ## Cost
 

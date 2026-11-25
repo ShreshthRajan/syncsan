@@ -1,1 +1,2 @@
-include CMakeLists.txt syncsan.cu inject_funcs.cu common.h LICENSE README.md
+include LICENSE README.md
+recursive-include src *

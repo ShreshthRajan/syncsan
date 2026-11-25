@@ -3,7 +3,7 @@ R=${1:-200}
 . /work/syncsan/reproduce/daytona/common.sh
 step amk-setup
 git clone -q https://github.com/RightNow-AI/AutoMegaKernel.git /opt/amk && cd /opt/amk && git checkout -q 884534c && timeout 900 uv sync -q 2>&1 | tail -3
-cp /work/syncsan/reproduce/amk_canary.py /opt/amk/canary.py
+cp /work/syncsan/reproduce/amk/canary.py /opt/amk/canary.py
 step "amk canary original"
 (cd /opt/amk && export PATH=/opt/amk/.venv/bin:$PATH && timeout 2400 .venv/bin/python canary.py $R 2>&1 | tee /work/out/canary_orig.log | grep -aE "CANARY|Error|Traceback" | tail -4)
 step "amk canary fixed"

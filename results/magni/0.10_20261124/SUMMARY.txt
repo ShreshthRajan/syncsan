@@ -1,0 +1,18 @@
+=== setup  [00:16:05]
+=== mvm  [00:16:32]
+=== build test  [00:16:41]
+=== native stage (test)  [00:21:02]
+== stage
+== stage: PASS (0.6s, 0 new failures)
+=== syncsan stage (test)  [00:21:03]
+== stage
+syncsan: 40 instrumented launches, 64 distinct racing instruction pairs (64 race records), 0 accesses untracked (shadow full)
+== stage: FAIL (26.2s, 1 new failures)
+=== build fix  [00:21:29]
+=== native stage (fix)  [00:25:50]
+== stage
+== stage: PASS (0.6s, 0 new failures)
+=== syncsan stage (fix)  [00:25:51]
+== stage
+syncsan: 64 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+== stage: PASS (34.5s, 0 new failures)

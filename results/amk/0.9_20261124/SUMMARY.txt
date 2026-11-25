@@ -1,0 +1,32 @@
+== amk_adversarial
+  "matches_eager": false,
+syncsan: 202 memory checks placed before a preceding run of loads (sm_90 NVBit hazard), 5 instructions left unchecked for it
+syncsan: ADVERSARIAL 869 load sites eligible (867 replaced), 54144 loads returned the value before a racing write
+syncsan: ADVERSARIAL 0 of those across a write of another size (the PTX model does not define mixed-size races); 0 left alone (a sub-word write after the recorded one, or the record changing while read)
+syncsan: WARNING: adversarial values at words written by untracked accesses (shadow full, hazard-skipped or unchecked concurrent kernels) may be ones the model forbids
+syncsan: 126 instrumented launches, 24 distinct racing instruction pairs (24 race records), 0 accesses untracked (shadow full)
+== amk_control
+  "matches_eager": true,
+syncsan: 202 memory checks placed before a preceding run of loads (sm_90 NVBit hazard), 5 instructions left unchecked for it
+syncsan: ADVERSARIAL (control) 869 load sites eligible (867 replaced), 54144 loads raced (given their current values)
+syncsan: WARNING: adversarial values at words written by untracked accesses (shadow full, hazard-skipped or unchecked concurrent kernels) may be ones the model forbids
+syncsan: 126 instrumented launches, 24 distinct racing instruction pairs (24 race records), 0 accesses untracked (shadow full)
+== amk_fixed_adversarial
+  "matches_eager": true,
+syncsan: 202 memory checks placed before a preceding run of loads (sm_90 NVBit hazard), 5 instructions left unchecked for it
+syncsan: ADVERSARIAL 871 load sites eligible (869 replaced), 0 loads returned the value before a racing write
+syncsan: ADVERSARIAL 0 of those across a write of another size (the PTX model does not define mixed-size races); 0 left alone (a sub-word write after the recorded one, or the record changing while read)
+syncsan: WARNING: adversarial values at words written by untracked accesses (shadow full, hazard-skipped or unchecked concurrent kernels) may be ones the model forbids
+syncsan: 126 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+== amk_fixed_syncsan
+  "matches_eager": true,
+syncsan: 202 memory checks placed before a preceding run of loads (sm_90 NVBit hazard), 5 instructions left unchecked for it
+syncsan: 126 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+== amk_native
+  "matches_eager": true,
+== amk_syncsan
+  "matches_eager": true,
+syncsan: 202 memory checks placed before a preceding run of loads (sm_90 NVBit hazard), 5 instructions left unchecked for it
+syncsan: 126 instrumented launches, 24 distinct racing instruction pairs (24 race records), 0 accesses untracked (shadow full)
+mp_block_no_producer_barrier old: 0 new: 1
+mp_block_no_consumer_barrier old: 2 new: 3

@@ -32,7 +32,7 @@ stores.
 ## Fix
 
 Add `fence.acq_rel.gpu` (the file's `GPU_MEMORY_FENCE()`) after the generation spin, and reset the counter with
-`atomicExch(counter, 0u)`. [reproduce/luce/patch_sync.py](../reproduce/luce/patch_sync.py) makes the change (`acquire`,
+`atomicExch(counter, 0u)`. [reproduce/luce/patch_sync.py](../../reproduce/luce/patch_sync.py) makes the change (`acquire`,
 `reset` or `both`).
 
 ## On hardware
@@ -40,7 +40,7 @@ Add `fence.acq_rel.gpu` (the file's `GPU_MEMORY_FENCE()`) after the generation s
 2,000 native decodes of 16 tokens on an H100 gave the same tokens and bitwise-identical hidden states every time, in the
 original and the fixed build, so the race has not shown up on hardware. A step took 1,235 µs in the original and 1,254
 µs with the fix, timed from Python, one run each on separate H100s, which is within the spread of one run. `modal run
-reproduce/modal_luce.py --modes stress --ntok 16` reruns it (add `--fixed both`).
+reproduce/modal/luce.py --modes stress --ntok 16` reruns it (add `--fixed both`).
 
 The same holds on a GeForce RTX 5090 (Blackwell, sm_120), the class of GPU Lucebox is written for. 20,000 native decodes
 of 16 tokens were all identical. syncsan 0.9 reports 72 racing pairs there, all between blocks at the handoffs above
@@ -52,7 +52,7 @@ With both fixes (syncsan 0.8) syncsan reports 0 pairs and the adversarial output
 
 A NaN canary in the five scratch buffers before every step (`reproduce/luce/canary.py`, RTX 5090, 1,000 decodes of 16
 tokens) was read in 0 decodes of the original and 0 of the fixed build; a control build with the grid-barrier wait removed
-read it in 20 of 20 decodes, so the test can fire (`results/luce_canary_rtx5090_20261124`).
+read it in 20 of 20 decodes, so the test can fire (`results/luce/canary_rtx5090_20261124`).
 
 ## Run settings
 
@@ -60,5 +60,5 @@ read it in 20 of 20 decodes, so the test can fire (`results/luce_canary_rtx5090_
 (`load_128bit`) unchecked. Weights are never written during decode, so skipping them can hide no race in the
 activations. With the weight loads checked, one token took 1,099 s and the shadow table overflowed with weight words.
 `lm_head_kernel` was not checked; its waiter does have `__threadfence()` after the spin.
-[reproduce/modal_luce.py](../reproduce/modal_luce.py) reruns the table (`--fixed acquire` and `--fixed both` for the
+[reproduce/modal/luce.py](../../reproduce/modal/luce.py) reruns the table (`--fixed acquire` and `--fixed both` for the
 last two rows).

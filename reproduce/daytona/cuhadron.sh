@@ -1,7 +1,7 @@
 # NVIDIA's cuHadron race benchmark (SM90) under syncsan and compute-sanitizer racecheck: the racy builds (should report)
 # and the FIXED builds (should not), then the scopedsync category this repository adds. Arg: TOOLS (syncsan,compute_sanitizer)
 TOOLS=${1:-syncsan,compute_sanitizer}
-CATDIR=${CATDIR:-/work/syncsan/cuhadron}
+CATDIR=${CATDIR:-/work/syncsan/tests/cuhadron}
 . /work/syncsan/reproduce/daytona/common.sh
 step cuhadron
 git clone -q https://github.com/NVlabs/cuHadron.git /opt/cuhadron && (cd /opt/cuhadron && git log --oneline -1)

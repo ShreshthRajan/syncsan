@@ -44,4 +44,4 @@ arguments to a format string with 14 markers, so every Qwen3 run on an H100 abor
 marker fixes it; an upstream "Fix Hopper paged-attention codegen" change exists. The OUTPUT_SIZE cap in
 `demo/qwen3/demo.py` ("not same output for same prompt") never applies to Qwen3-8B's layer sizes, and runs with it
 removed were deterministic too, as were runs that also restored the store wait the swapAB linear kernel has commented
-out (`reproduce/daytona/mirage_fix.py`); that wait guards an output slot the next TMA store may still be reading.
+out (`reproduce/mirage/fix.py`); that wait guards an output slot the next TMA store may still be reading.

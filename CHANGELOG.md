@@ -15,7 +15,7 @@
 
 ## 0.10.1 (2026-11-24)
 
-- Native canary tests with positive controls (`reproduce/hazy_witness.py`, `reproduce/amk_canary.py`,
+- Native canary tests with positive controls (`reproduce/hazy/canary.py`, `reproduce/amk/canary.py`,
   `reproduce/luce/canary.py`): Hazy's `silu_out` handoff reads stale data on an H100 in 1,000 of 1,000 generations
   before the release/acquire fix and 0 of 1,000 after; Hazy's `attn_out`, AutoMegaKernel and Lucebox did not fail.
 - Magni VM rerun on 0.10: 64 racing pairs before the fix, 0 after.
@@ -24,9 +24,9 @@
 
 - `fence.proxy.async`: a bulk or TMA store that reads shared memory written by a warp with no proxy fence in the block
   between the write and the copy's issue is reported (`proxy_fence_missing` / `proxy_fence_present`). 49 known-answer
-  checks pass on H100 (`results/tests_0.10_h100_20261124`).
+  checks pass on H100 (`results/tests/0.10_h100_20261124`).
 - Hazy: the shared-memory pair is a second race, the QOL page finished before the consumer's `L_smem` store when
-  `skip_attn_reduction` is set ([docs/hazy-megakernel.md](docs/hazy-megakernel.md)).
+  `skip_attn_reduction` is set ([docs/findings/hazy-megakernel.md](docs/findings/hazy-megakernel.md)).
 
 ## 0.9.0 (2026-11-24)
 

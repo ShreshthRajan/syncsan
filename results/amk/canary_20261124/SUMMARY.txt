@@ -1,0 +1,3 @@
+orig: CANARY amk generations=200 with_nan=0 nan_launches=0
+fixed: CANARY amk generations=200 with_nan=0 nan_launches=0
+control: CANARY amk generations=20 with_nan=20 nan_launches=360

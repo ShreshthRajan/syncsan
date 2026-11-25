@@ -1,0 +1,34 @@
+=== setup  [00:49:15]
+=== superlu-deps  [00:50:02]
+=== build fix (587f38f6dc14c29c1f6f7f14d68dde3080a081c0)  [00:50:13]
+587f38f6 Fix GPU trisolve regression: restore __threadfence() in cross-block spin-waits
+=== fix native (lap160)  [00:50:37]
+.. Sol  0: ||X - Xtrue|| / ||X|| = 1.676437e-14	 max_i |x - xtrue|_i / |x|_i = 1.676437e-14
+=== fix syncsan (lap64)  [00:50:42]
+.. Sol  0: ||X - Xtrue|| / ||X|| = 4.884981e-15	 max_i |x - xtrue|_i / |x|_i = 4.884981e-15
+syncsan: 2 instrumented launches, 4 distinct racing instruction pairs (4 race records), 0 accesses untracked (shadow full)
+=== fix adversarial (lap64)  [00:50:46]
+.. Sol  0: ||X - Xtrue|| / ||X|| = 7.420137e-01	 max_i |x - xtrue|_i / |x|_i = 1.156041e+03
+syncsan: ADVERSARIAL 349 load sites eligible (324 replaced), 4619 loads returned the value before a racing write
+syncsan: ADVERSARIAL 0 substituted words were last written by an access of another width (a vector, bulk or TMA access against a narrower or wider one: a mixed-size race if the element types differ, w
+syncsan: 2 instrumented launches, 4 distinct racing instruction pairs (4 race records), 0 accesses untracked (shadow full)
+=== fix control (lap64)  [00:50:50]
+.. Sol  0: ||X - Xtrue|| / ||X|| = 4.996004e-15	 max_i |x - xtrue|_i / |x|_i = 4.996004e-15
+syncsan: ADVERSARIAL (control) 349 load sites eligible (324 replaced), 4627 loads raced (given their current values)
+syncsan: 2 instrumented launches, 4 distinct racing instruction pairs (4 race records), 0 accesses untracked (shadow full)
+=== build master (239280c103)  [00:50:54]
+239280c1 GPU solve: release fence before each producer decrement of fmod/bmod
+=== master native (lap160)  [00:51:20]
+.. Sol  0: ||X - Xtrue|| / ||X|| = 1.221245e-14	 max_i |x - xtrue|_i / |x|_i = 1.221245e-14
+=== master syncsan (lap64)  [00:51:24]
+.. Sol  0: ||X - Xtrue|| / ||X|| = 5.995204e-15	 max_i |x - xtrue|_i / |x|_i = 5.995204e-15
+syncsan: 70 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+=== master adversarial (lap64)  [00:51:29]
+.. Sol  0: ||X - Xtrue|| / ||X|| = 6.217249e-15	 max_i |x - xtrue|_i / |x|_i = 6.217249e-15
+syncsan: ADVERSARIAL 484 load sites eligible (447 replaced), 0 loads returned the value before a racing write
+syncsan: ADVERSARIAL 0 substituted words were last written by an access of another width (a vector, bulk or TMA access against a narrower or wider one: a mixed-size race if the element types differ, w
+syncsan: 70 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+=== master control (lap64)  [00:51:33]
+.. Sol  0: ||X - Xtrue|| / ||X|| = 5.773160e-15	 max_i |x - xtrue|_i / |x|_i = 5.773160e-15
+syncsan: ADVERSARIAL (control) 484 load sites eligible (447 replaced), 0 loads raced (given their current values)
+syncsan: 70 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)

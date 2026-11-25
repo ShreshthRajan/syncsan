@@ -1,7 +1,7 @@
 """Build syncsan and run its 37 known-answer cases on a rented GPU through Modal (https://modal.com).
 
-    modal run reproduce/modal_cases.py              # H100
-    SYNCSAN_GPU=B200 modal run reproduce/modal_cases.py
+    modal run reproduce/modal/cases.py              # H100
+    SYNCSAN_GPU=B200 modal run reproduce/modal/cases.py
 """
 import os
 import pathlib
@@ -9,7 +9,7 @@ import subprocess
 
 import modal
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 NVBIT = "https://github.com/NVlabs/NVBit/releases/download/v1.8.2/nvbit-Linux-x86_64-1.8.2.tar.bz2"
 GPU = os.environ.get("SYNCSAN_GPU", "H100")
 ARCH = "100" if GPU.startswith("B") else "90"

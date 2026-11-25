@@ -3,14 +3,14 @@
 Runs the toy model with --verify (the megakernel's tokens against an eager PyTorch run): natively, in adversarial mode,
 under the control, and in adversarial mode after making the counter wait an acquire.
 
-    modal run reproduce/modal_amk.py
+    modal run reproduce/modal/amk.py
 """
 import pathlib
 import subprocess
 
 import modal
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 NVBIT = "https://github.com/NVlabs/NVBit/releases/download/v1.8.2/nvbit-Linux-x86_64-1.8.2.tar.bz2"
 AMK_COMMIT = "884534c"
 FIX = r"""
@@ -45,7 +45,7 @@ def sh(cmd: str, timeout: int) -> str:
 
 @app.function(gpu="H100", cpu=8, memory=32768, timeout=45 * 60)
 def run() -> list[str]:
-    sh("cd /work/syncsan && cmake -S . -B build -DNVBIT_ROOT=/opt/nvbit/nvbit_release_x86_64 "
+    sh("cd /work/syncsan && cmake -S src -B build -DNVBIT_ROOT=/opt/nvbit/nvbit_release_x86_64 "
        "-DNVBIT_TOOL_CUDA_ARCHITECTURES=90 && cmake --build build -j8", 900)
     gen = ".venv/bin/python amk_cli.py generate toy --gpu h100 --prompt-ids 1,2,3 --max-tokens 16 --verify"
     tool = "LD_PRELOAD=/work/syncsan/build/syncsan.so SYNCSAN_SHARED=0"

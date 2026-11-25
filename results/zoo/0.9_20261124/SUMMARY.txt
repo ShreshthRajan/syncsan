@@ -1,0 +1,25 @@
+=== setup  [16:29:52]
+=== known-answer  [16:30:22]
+passed: 47  failed: 0
+=== setup  [16:31:20]
+=== zoo  [16:31:34]
+=== native (fix=none)  [16:32:04]
+DRIVE tokens: [12095, 13, 576, 6722] text: ' Paris. The capital'
+DRIVE HF greedy: [12095, 13, 576, 6722] ' Paris. The capital'; engine MATCHES HF
+DRIVE tokens: [12095, 13, 576, 6722] text: ' Paris. The capital'
+DRIVE vs native: tokens MATCH ([12095, 13, 576, 6722] vs [12095, 13, 576, 6722]); logits BITWISE, max|diff| 0, positions differing 0/4
+=== syncsan (fix=none)  [16:32:27]
+DRIVE tokens: [12095, 13, 576, 6722] text: ' Paris. The capital'
+DRIVE vs native: tokens MATCH ([12095, 13, 576, 6722] vs [12095, 13, 576, 6722]); logits BITWISE, max|diff| 0, positions differing 0/4
+syncsan: 9 instrumented launches, 9 distinct racing instruction pairs (9 race records), 0 accesses untracked (shadow full)
+=== adversarial (fix=none)  [16:32:42]
+DRIVE tokens: [62, 323, 315, 58] text: '_ and of['
+DRIVE vs native: tokens DIFFER ([62, 323, 315, 58] vs [12095, 13, 576, 6722]); logits differ, max|diff| 27.77, positions differing 4/4
+syncsan: ADVERSARIAL 127 load sites eligible (127 replaced), 2555088 loads returned the value before a racing write
+syncsan: ADVERSARIAL 16117016 substituted words were last written by an access of another size (a mixed-size race, whose outcome the PTX model does not define); 0 words left alone (a sub-word write after the recorded one, or the record changing while read)
+syncsan: 9 instrumented launches, 10 distinct racing instruction pairs (10 race records), 0 accesses untracked (shadow full)
+=== control (fix=none)  [16:33:11]
+DRIVE tokens: [12095, 13, 576, 6722] text: ' Paris. The capital'
+DRIVE vs native: tokens MATCH ([12095, 13, 576, 6722] vs [12095, 13, 576, 6722]); logits BITWISE, max|diff| 0, positions differing 0/4
+syncsan: ADVERSARIAL (control) 127 load sites eligible (127 replaced), 2559198 loads raced (given their current values)
+syncsan: 9 instrumented launches, 10 distinct racing instruction pairs (10 race records), 0 accesses untracked (shadow full)

@@ -14,5 +14,5 @@ H100.
 All pairs in 3.6.0 are the middle split's `atomicAdd` in `BlockStripedReduce::reduce`
 (`block_striped.h:229` < `sm90_tile_scheduler_stream_k.hpp:504`) against the final split's read in `load_add`
 (`block_striped.h:181` < `stream_k.hpp:530`), which follows `wait_lt(..., 1)` at line 525. Adversarial mode adds nothing
-here, because the buggy version already fails natively. [reproduce/modal_cutlass.py](../reproduce/modal_cutlass.py)
+here, because the buggy version already fails natively. [reproduce/modal/cutlass.py](../../reproduce/modal/cutlass.py)
 reruns the table.

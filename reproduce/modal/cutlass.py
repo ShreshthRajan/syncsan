@@ -4,7 +4,7 @@ Buggy: CUTLASS v3.6.0 (the final split waits only for the first split). Fixed: v
 preceding split; fix landed in the 3.7 release commit b78588d, 2025-01-18). Test program: reproduce/cutlass/sk_repro.cu, the
 issue's reproducer (fp32 SM90 cooperative GEMM, Stream-K forced, reference check), built with -lineinfo.
 
-    modal run reproduce/modal_cutlass.py [--native "..."] [--san "..."] [--kernel device_kernel]
+    modal run reproduce/modal/cutlass.py [--native "..."] [--san "..."] [--kernel device_kernel]
 """
 import pathlib
 import subprocess
@@ -12,7 +12,7 @@ import time
 
 import modal
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 NVBIT = "https://github.com/NVlabs/NVBit/releases/download/v1.8.2/nvbit-Linux-x86_64-1.8.2.tar.bz2"
 BUILDS = {"bug": "v3.6.0", "fix": "v3.7.0"}
 NVCC = "nvcc -std=c++17 -arch=sm_90a -O3 -lineinfo --expt-relaxed-constexpr -DNDEBUG"
@@ -49,7 +49,7 @@ def run(native: list, san: str, kernel: str, builds: list, modes: list) -> dict:
         rc, out = sh(cmd, timeout); logs[name] = out; summary.append(f"{name}: exit {rc}"); return rc, out
     step("gpu", "nvidia-smi --query-gpu=name,driver_version,count --format=csv,noheader; nvcc --version | tail -2; "
          + "; ".join(f"grep -n 'wait_lt\\|wait_eq' /opt/cutlass_{b}/include/cutlass/gemm/kernel/sm90_tile_scheduler_stream_k.hpp" for b in BUILDS), 300)
-    step("build_syncsan", "cd /work/syncsan && cmake -S . -B build -DNVBIT_ROOT=/opt/nvbit/nvbit_release_x86_64 "
+    step("build_syncsan", "cd /work/syncsan && cmake -S src -B build -DNVBIT_ROOT=/opt/nvbit/nvbit_release_x86_64 "
          "-DNVBIT_TOOL_CUDA_ARCHITECTURES=90 && cmake --build build -j8", 900)
     T = "LD_PRELOAD=/work/syncsan/build/syncsan.so SYNCSAN_VERBOSE=1 SYNCSAN_SHARED=0" + (f" SYNCSAN_KERNEL={kernel}" if kernel else "")
     keep = lambda out: " | ".join(l.strip() for l in out.splitlines() if any(k in l for k in (
@@ -69,7 +69,7 @@ def main(native: str = "--mode=nd --k=4096 --iters=50;--mode=nd --k=4096 --sms=1
          san: str = "--mode=nd --k=4096 --sms=114 --iters=1", kernel: str = "device_kernel", builds: str = "bug,fix", modes: str = "syncsan,adversarial,control", tag: str = ""):
     t0 = time.time()
     res = run.remote([a for a in native.split(";") if a], san, kernel, builds.split(","), [m for m in modes.split(",") if m])
-    out = ROOT / "results" / time.strftime(f"cutlass{'_' + tag if tag else ''}_%Y%m%d_%H%M%S")
+    out = ROOT / "results" / "cutlass" / time.strftime(f"cutlass{'_' + tag if tag else ''}_%Y%m%d_%H%M%S")
     out.mkdir(parents=True, exist_ok=True)
     for name, text in res["logs"].items():
         (out / f"{name}.log").write_text(text)

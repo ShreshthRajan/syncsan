@@ -1,0 +1,20 @@
+native: --mode=nd --k=4096 --iters=50;--mode=nd --k=4096 --sms=114 --iters=50;--mode=nd --k=16384 --iters=20;--mode=det --k=4096 --iters=20
+syncsan: --mode=nd --k=4096 --sms=114 --iters=1
+kernel: device_kernel
+gpu: exit 0
+build_syncsan: exit 0
+bug_native0: exit 1 | mode=nd M=1024 N=1024 K=4096 sms=132: 50 / 50 iterations wrong -> FAILED
+bug_native1: exit 1 | mode=nd M=1024 N=1024 K=4096 sms=114: 50 / 50 iterations wrong -> FAILED
+bug_native2: exit 1 | mode=nd M=1024 N=1024 K=16384 sms=132: 20 / 20 iterations wrong -> FAILED
+bug_native3: exit 0 | mode=det M=1024 N=1024 K=4096 sms=132: 0 / 20 iterations wrong -> PASSED
+bug_syncsan: exit 1 | mode=nd M=1024 N=1024 K=4096 sms=114: 1 / 1 iterations wrong -> FAILED | syncsan: 1 instrumented launches, 110 distinct racing instruction pairs (110 race records), 0 accesses untracked (shadow full)
+bug_adversarial: exit 1 | mode=nd M=1024 N=1024 K=4096 sms=114: 1 / 1 iterations wrong -> FAILED | syncsan: ADVERSARIAL 17 load sites eligible (17 replaced), 1024 loads returned the value before a racing write | syncsan: 1 instrumented launches, 124 distinct racing instruction pairs (124 race records), 0 accesses untracked (shadow full)
+bug_control: exit 1 | mode=nd M=1024 N=1024 K=4096 sms=114: 1 / 1 iterations wrong -> FAILED | syncsan: ADVERSARIAL (control) 17 load sites eligible (17 replaced), 1024 loads raced (given their current values) | syncsan: 1 instrumented launches, 97 distinct racing instruction pairs (97 race records), 0 accesses untracked (shadow full)
+fix_native0: exit 0 | mode=nd M=1024 N=1024 K=4096 sms=132: 0 / 50 iterations wrong -> PASSED
+fix_native1: exit 0 | mode=nd M=1024 N=1024 K=4096 sms=114: 0 / 50 iterations wrong -> PASSED
+fix_native2: exit 0 | mode=nd M=1024 N=1024 K=16384 sms=132: 0 / 20 iterations wrong -> PASSED
+fix_native3: exit 0 | mode=det M=1024 N=1024 K=4096 sms=132: 0 / 20 iterations wrong -> PASSED
+fix_syncsan: exit 0 | mode=nd M=1024 N=1024 K=4096 sms=114: 0 / 1 iterations wrong -> PASSED | syncsan: 1 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+fix_adversarial: exit 0 | mode=nd M=1024 N=1024 K=4096 sms=114: 0 / 1 iterations wrong -> PASSED | syncsan: ADVERSARIAL 17 load sites eligible (17 replaced), 0 loads returned the value before a racing write | syncsan: 1 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+fix_control: exit 0 | mode=nd M=1024 N=1024 K=4096 sms=114: 0 / 1 iterations wrong -> PASSED | syncsan: ADVERSARIAL (control) 17 load sites eligible (17 replaced), 0 loads raced (given their current values) | syncsan: 1 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+wall time 38 s

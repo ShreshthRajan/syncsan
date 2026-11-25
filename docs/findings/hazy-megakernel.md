@@ -63,9 +63,9 @@ which does not separate the builds at this sample size.
 ## On hardware
 
 A native test with no instrumentation, following #15's method with a stronger canary: before every decode step,
-`reproduce/hazy_witness.py` fills one buffer with NaN. Every op that reads the buffer runs after the op that writes it,
+`reproduce/hazy/canary.py` fills one buffer with NaN. Every op that reads the buffer runs after the op that writes it,
 so a correct kernel never reads the NaN; one stale read anywhere turns the logits into NaN. 1,000 generations of 64
-tokens per build, H100 (`results/hazy_witness_nan_20261124`):
+tokens per build, H100 (`results/hazy/canary_nan_20261124`):
 
 | Buffer | Original | Release/acquire build |
 |---|---|---|
@@ -75,7 +75,7 @@ tokens per build, H100 (`results/hazy_witness_nan_20261124`):
 So on an H100 the down-projection reads `silu_out` before the up/gate op's writes are visible in every generation,
 nearly always on the first decode step; #15's 2.6% counts the generations in which the stale value also changed a token.
 The `attn_out` handoff, read through TMA and `cp.async`, did not fail.
-[reproduce/daytona/hazy_witness.sh](../reproduce/daytona/hazy_witness.sh) reruns the table.
+[reproduce/daytona/hazy_witness.sh](../../reproduce/daytona/hazy_witness.sh) reruns the table.
 
 ## A second race: the QOL page
 
@@ -102,6 +102,6 @@ per container:
 (A third release/acquire timing, 126.7 ms, came from a run where the patch failed to build and the original ran instead;
 syncsan still reported the original's pairs there, so it is left out.)
 
-[reproduce/patch_hazy.py](../reproduce/patch_hazy.py) produces both fixed builds (`fences` and `acqrel`), and
-[reproduce/modal_hazy.py](../reproduce/modal_hazy.py) reruns the table. The issue upstream is
+[reproduce/hazy/patch.py](../../reproduce/hazy/patch.py) produces both fixed builds (`fences` and `acqrel`), and
+[reproduce/modal/hazy.py](../../reproduce/modal/hazy.py) reruns the table. The issue upstream is
 [HazyResearch/Megakernels#16](https://github.com/HazyResearch/Megakernels/issues/16).

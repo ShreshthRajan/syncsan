@@ -23,6 +23,6 @@ if [ -x /opt/conda/bin/python ]; then export PATH=/opt/conda/bin:$PATH; PIPI="pi
 elif [ -x /work/bin/python ]; then export PATH=/work/bin:$PATH PIP_BREAK_SYSTEM_PACKAGES=1; PIPI="pip install -q"
 else . /work/venv/bin/activate; PIPI="uv pip install -q"; fi
 touch /opt/.setup_done
-(cd /work/syncsan && rm -rf build && cmake -S . -B build -DNVBIT_ROOT=/opt/nvbit/nvbit_release_x86_64 -DNVBIT_TOOL_CUDA_ARCHITECTURES=$ARCH >/dev/null && cmake --build build -j8 2>&1 | tail -1)
+(cd /work/syncsan && rm -rf build && cmake -S src -B build -DNVBIT_ROOT=/opt/nvbit/nvbit_release_x86_64 -DNVBIT_TOOL_CUDA_ARCHITECTURES=$ARCH >/dev/null && cmake --build build -j8 2>&1 | tail -1)
 SAN=/work/syncsan/build/syncsan.so
 ls -la $SAN

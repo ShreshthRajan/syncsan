@@ -1,5 +1,5 @@
 # Builds the Python package and checks the CLI on every push. The CUDA tool itself needs a GPU to build and test; see
-# CONTRIBUTING.md and reproduce/modal_cases.py.
+# CONTRIBUTING.md and reproduce/modal/cases.py.
 name: package
 on: [push, pull_request]
 jobs:

@@ -4,14 +4,14 @@ Builds the megakernel three ways (original, fences, acqrel; see patch_hazy.py), 
 race report, adversarial mode and its control on the original, adversarial mode on the release/acquire build, and the
 latency of each build. Llama-3.2-1B-Instruct comes from the unsloth mirror, which holds the same weights as meta-llama's.
 
-    modal run reproduce/modal_hazy.py
+    modal run reproduce/modal/hazy.py
 """
 import pathlib
 import subprocess
 
 import modal
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 NVBIT = "https://github.com/NVlabs/NVBit/releases/download/v1.8.2/nvbit-Linux-x86_64-1.8.2.tar.bz2"
 MK_COMMIT = "7309cec"
 MODEL = "unsloth/Llama-3.2-1B-Instruct"
@@ -30,7 +30,7 @@ image = (
                   f"git checkout -q {MK_COMMIT} && git submodule update --init --recursive -q && pip install -e . --no-deps -q",
                   f"huggingface-cli download {MODEL} --exclude '*.pth' 'original/*' > /dev/null",
                   f"cd /opt/mk/demos/low-latency-llama && {MAKE}")
-    .add_local_file(ROOT / "reproduce" / "patch_hazy.py", "/opt/patch_hazy.py", copy=True)
+    .add_local_file(ROOT / "reproduce" / "hazy" / "patch.py", "/opt/patch_hazy.py", copy=True)
     .run_commands(*[f"cp -r /opt/mk/demos/low-latency-llama /opt/mk/demos/{m} && rm -f /opt/mk/demos/{m}/*.so && "
                     f"python /opt/patch_hazy.py /opt/mk/demos/{m} {m} && cd /opt/mk/demos/{m} && {MAKE}"
                     for m in ("fences", "acqrel")])
@@ -49,7 +49,7 @@ def sh(cmd: str, timeout: int) -> str:
 
 @app.function(gpu="H100", cpu=8, memory=65536, timeout=60 * 60)
 def run() -> list[str]:
-    sh("cd /work/syncsan && cmake -S . -B build -DNVBIT_ROOT=/opt/nvbit/nvbit_release_x86_64 "
+    sh("cd /work/syncsan && cmake -S src -B build -DNVBIT_ROOT=/opt/nvbit/nvbit_release_x86_64 "
        "-DNVBIT_TOOL_CUDA_ARCHITECTURES=90 && cmake --build build -j8", 900)
     gen = f"python megakernels/scripts/generate.py mode=mk model={MODEL} num_warmup=0 num_iters=1 ntok=8"
     tool = "LD_PRELOAD=/work/syncsan/build/syncsan.so SYNCSAN_KERNEL=megakernel::mk SYNCSAN_SHARED=0"

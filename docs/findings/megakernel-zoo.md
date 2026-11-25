@@ -33,14 +33,14 @@ The ninth pair is a deliberate race. `att_done` is written with a plain store (`
 bounded.
 
 syncsan 0.9 (warp-level ordering, shared-memory clocks) reports the same 9 pairs, and the control is again bitwise equal
-to native (`results/zoo_0.9_20261124`). The handoffs store 4-byte values that attention reads with 16-byte `__ldcg`
+to native (`results/zoo/0.9_20261124`). The handoffs store 4-byte values that attention reads with 16-byte `__ldcg`
 loads, so the substituted words were last written by accesses of another width; whether the races are uniform-size
 depends on element types the machine code does not show.
 
 ## Fix
 
 Add `__threadfence()` after each spin on `P.sync`: in `grid_barrier`, in the coordinator warp's barrier and in the
-`QKV_NOWAIT` wait. [reproduce/zoo/patch_sync.py](../reproduce/zoo/patch_sync.py) makes the change. `fence.acq_rel.gpu`
+`QKV_NOWAIT` wait. [reproduce/zoo/patch_sync.py](../../reproduce/zoo/patch_sync.py) makes the change. `fence.acq_rel.gpu`
 or an `ld.acquire.gpu` poll would also work.
 
 ## On hardware
@@ -48,11 +48,11 @@ or an `ld.acquire.gpu` poll would also work.
 2,000 native decodes of 16 tokens on an H100 gave the same tokens and bitwise-identical logits every time, in the
 original and the fixed build, so the race has not shown up on hardware. A step took 5,143 µs in the original and 5,063
 µs with the fix, timed from Python, one run each on separate H100s, which is within the spread of one run. `modal run
-reproduce/modal_zoo.py --modes stress --ntok 16` reruns it (add `--fixed acquire`).
+reproduce/modal/zoo.py --modes stress --ntok 16` reruns it (add `--fixed acquire`).
 
 ## Run settings
 
 `SYNCSAN_SHARED=0` and `SYNCSAN_SKIP_OPS==LDG.E.LU.128`, which leaves the engine's weight loads (`WLOAD`) unchecked.
 Weights are never written during a step, so skipping them can hide no race in the activations. With the weight loads
 checked, every mode ran past the 40-minute limit: the shadow table fills with weight words. Every other load and store
-is checked. [reproduce/modal_zoo.py](../reproduce/modal_zoo.py) reruns the table (`--fixed acquire` for the last row).
+is checked. [reproduce/modal/zoo.py](../../reproduce/modal/zoo.py) reruns the table (`--fixed acquire` for the last row).

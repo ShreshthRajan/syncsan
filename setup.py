@@ -15,7 +15,7 @@ class with_sources(build_py):
         out = pathlib.Path(self.build_lib) / "syncsan" / "csrc"
         out.mkdir(parents=True, exist_ok=True)
         for f in SOURCES:
-            shutil.copy(HERE / f, out / f)
+            shutil.copy(HERE / "src" / f, out / f)
 
 
 setup(cmdclass={"build_py": with_sources})

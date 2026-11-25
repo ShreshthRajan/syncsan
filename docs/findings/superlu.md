@@ -22,7 +22,7 @@ The SuperLU_DIST developers confirmed the missing release in
 a `__threadfence()` before each producer's `atomicSub` on `fmod` and `bmod`, in `pdgstrs_lsum_cuda.cu` and its single and
 complex counterparts, and a warp synchronization before the fence where one lane decremented for the whole warp. On
 239280c, syncsan 0.10 reports 0 racing pairs, the adversarial solve is correct (error 6.2e-15) and so is the control
-(`results/superlu_239280c_20261124`, `reproduce/daytona/superlu.sh`). On 587f38f in the same run: 4 pairs, adversarial
+(`results/superlu/239280c_20261124`, `reproduce/daytona/superlu.sh`). On 587f38f in the same run: 4 pairs, adversarial
 error 0.74, control 5.0e-15.
 
 ## Results
@@ -36,5 +36,5 @@ error 0.74, control 5.0e-15.
 Error is `||X - Xtrue|| / ||X||` as printed by the driver, from two separate runs of each case. The official fix is
 correct natively in our H100 runs; the adversarial run shows that its result depends on an ordering PTX does not
 promise. With the default supernode settings every build is correct and no handoff between blocks occurs in the test
-matrices. [reproduce/modal_superlu.py](../reproduce/modal_superlu.py) reruns the table;
-[reproduce/superlu/release_fence.sh](../reproduce/superlu/release_fence.sh) is the producer fence.
+matrices. [reproduce/modal/superlu.py](../../reproduce/modal/superlu.py) reruns the table;
+[reproduce/superlu/release_fence.sh](../../reproduce/superlu/release_fence.sh) is the producer fence.

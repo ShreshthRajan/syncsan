@@ -1,0 +1,26 @@
+=== setup  [16:17:08]
+mp_block_barriers block-level: 0 warp-level: 0
+mp_block_no_producer_barrier block-level: 0 warp-level: 1
+mp_block_no_consumer_barrier block-level: 0 warp-level: 1
+=== setup  [16:17:49]
+=== lucebox  [16:18:05]
+=== native (fix=none)  [16:18:58]
+DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is Paris.\nThe capital of France is'
+DRIVE HF greedy: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] ' Paris.\nThe capital of France is Paris.\nThe capital of France is'; megakernel MATCHES HF
+DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is Paris.\nThe capital of France is'
+DRIVE vs native: tokens MATCH ([11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] vs [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden BITWISE, max|diff| 0, steps differing 0/16
+=== syncsan (fix=none)  [16:19:15]
+DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is Paris.\nThe capital of France is'
+DRIVE vs native: tokens MATCH ([11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] vs [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden BITWISE, max|diff| 0, steps differing 0/16
+syncsan: 20 instrumented launches, 72 distinct racing instruction pairs (72 race records), 0 accesses untracked (shadow full)
+=== adversarial (fix=none)  [16:19:26]
+DRIVE tokens: [100885, 102965, 90309, 53395, 40756, 17270, 21070, 224656, 78734, 173688, 165814, 137688, 165444, 109624, 4074, 23719] text: '成年藍INETOODgebiley companionquíSKInskinig企业服务тал一般的tempttu'
+DRIVE vs native: tokens DIFFER ([100885, 102965, 90309, 53395, 40756, 17270, 21070, 224656, 78734, 173688, 165814, 137688, 165444, 109624, 4074, 23719] vs [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden differ, max|diff| 42.59, steps differi
+syncsan: ADVERSARIAL 50 load sites eligible (50 replaced), 214453093 loads returned the value before a racing write
+syncsan: ADVERSARIAL 0 substituted words were last written by an access of another size (a mixed-size race, whose outcome the PTX model does not define); 0 words left alone (a sub-word write after the recorded one, or the record changing while read)
+syncsan: 20 instrumented launches, 71 distinct racing instruction pairs (71 race records), 0 accesses untracked (shadow full)
+=== control (fix=none)  [16:22:49]
+DRIVE tokens: [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] text: ' Paris.\nThe capital of France is Paris.\nThe capital of France is'
+DRIVE vs native: tokens MATCH ([11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369] vs [11751, 13, 198, 760, 6511, 314, 9338, 369, 11751, 13, 198, 760, 6511, 314, 9338, 369]); final-norm hidden BITWISE, max|diff| 0, steps differing 0/16
+syncsan: ADVERSARIAL (control) 50 load sites eligible (50 replaced), 214470535 loads raced (given their current values)
+syncsan: 20 instrumented launches, 71 distinct racing instruction pairs (71 race records), 0 accesses untracked (shadow full)

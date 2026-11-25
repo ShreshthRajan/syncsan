@@ -5,7 +5,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 NVBIT_ROOT="${NVBIT_ROOT:-${SYNCSAN_HOME:-$HOME/.cache/syncsan}/nvbit_release_x86_64}"   # where `syncsan build` puts NVBit
 ARCH="${1:-sm_80}"
-cmake -S . -B build -DNVBIT_ROOT="$NVBIT_ROOT" -DNVBIT_TOOL_CUDA_ARCHITECTURES="${ARCH#sm_}" > build.log 2>&1 && cmake --build build -j >> build.log 2>&1 || { tail -40 build.log; exit 1; }
+cmake -S src -B build -DNVBIT_ROOT="$NVBIT_ROOT" -DNVBIT_TOOL_CUDA_ARCHITECTURES="${ARCH#sm_}" > build.log 2>&1 && cmake --build build -j >> build.log 2>&1 || { tail -40 build.log; exit 1; }
 nvcc -O2 -arch="$ARCH" -lineinfo -o build/race_cases tests/race_cases.cu -lcuda || exit 1
 fail=0
 check() {  # case expect(racy|clean)

@@ -1,0 +1,4 @@
+witness_attn_out_acqrel.log: WITNESS canary=attn_out value=nan generations=1000 distinct=9 canary_steps=0/63000 canary_generations=0/1000
+witness_attn_out_low-latency-llama.log: WITNESS canary=attn_out value=nan generations=1000 distinct=27 canary_steps=0/63000 canary_generations=0/1000
+witness_silu_out_acqrel.log: WITNESS canary=silu_out value=nan generations=1000 distinct=8 canary_steps=0/63000 canary_generations=0/1000
+witness_silu_out_low-latency-llama.log: WITNESS canary=silu_out value=nan generations=1000 distinct=11 canary_steps=62819/63000 canary_generations=1000/1000

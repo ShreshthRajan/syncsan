@@ -1,0 +1,25 @@
+native: SUPERLU_RELAX=4 SUPERLU_MAXSUP=16 ./pddrive3d -i 0 /tmp/lap160.mtx;SUPERLU_RELAX=4 SUPERLU_MAXSUP=16 ./pddrive3d -i 0 /tmp/bd256.mtx;./pddrive3d -i 0 /tmp/lap160.mtx
+syncsan: SUPERLU_RELAX=4 SUPERLU_MAXSUP=16 ./pddrive3d -i 0 /tmp/lap64.mtx
+kernel: lsum_
+gpu: exit 0
+matrices: exit 0
+build_syncsan: exit 0
+bug_native0: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 3.986021e-01	 max_i |x - xtrue|_i / |x|_i = 6.087721e-01
+bug_native1: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 7.728895e-02	 max_i |x - xtrue|_i / |x|_i = 8.376290e-02
+bug_native2: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 1.322256e-01	 max_i |x - xtrue|_i / |x|_i = 1.322256e-01
+bug_syncsan: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 5.551115e-15	 max_i |x - xtrue|_i / |x|_i = 5.551115e-15 | syncsan: instrumenting dlsum_fmod_inv_gpu_mrhs | syncsan: instrumenting dlsum_bmod_inv_gpu_mrhs | syncsan: 2 instrumented launches, 4 distinct racing instruction pairs (4 race records), 0 accesses untracked (shadow full)
+bug_adversarial: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 6.264955e-01	 max_i |x - xtrue|_i / |x|_i = 2.433456e+05 | syncsan: instrumenting dlsum_fmod_inv_gpu_mrhs | syncsan: instrumenting dlsum_bmod_inv_gpu_mrhs | syncsan: ADVERSARIAL 349 load sites eligible (324 replaced), 6092 loads returned the value before a racing write | syncsan: 2 instrumented launches, 4 distinct racing instruction pairs (4 race records), 0 accesses untracked (shadow full)
+bug_control: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 5.329071e-15	 max_i |x - xtrue|_i / |x|_i = 5.329071e-15 | syncsan: instrumenting dlsum_fmod_inv_gpu_mrhs | syncsan: instrumenting dlsum_bmod_inv_gpu_mrhs | syncsan: ADVERSARIAL (control) 349 load sites eligible (324 replaced), 6092 loads raced (given their current values) | syncsan: 2 instrumented launches, 4 distinct racing instruction pairs (4 race records), 0 accesses untracked (shadow full)
+fix_native0: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 1.743050e-14	 max_i |x - xtrue|_i / |x|_i = 1.743050e-14
+fix_native1: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 1.110223e-15	 max_i |x - xtrue|_i / |x|_i = 1.110223e-15
+fix_native2: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 1.820766e-14	 max_i |x - xtrue|_i / |x|_i = 1.820766e-14
+fix_syncsan: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 4.996004e-15	 max_i |x - xtrue|_i / |x|_i = 4.996004e-15 | syncsan: instrumenting dlsum_fmod_inv_gpu_mrhs | syncsan: instrumenting dlsum_bmod_inv_gpu_mrhs | syncsan: 2 instrumented launches, 4 distinct racing instruction pairs (4 race records), 0 accesses untracked (shadow full)
+fix_adversarial: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 7.076885e-01	 max_i |x - xtrue|_i / |x|_i = 5.653378e+03 | syncsan: instrumenting dlsum_fmod_inv_gpu_mrhs | syncsan: instrumenting dlsum_bmod_inv_gpu_mrhs | syncsan: ADVERSARIAL 349 load sites eligible (324 replaced), 4635 loads returned the value before a racing write | syncsan: 2 instrumented launches, 4 distinct racing instruction pairs (4 race records), 0 accesses untracked (shadow full)
+fix_control: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 4.996004e-15	 max_i |x - xtrue|_i / |x|_i = 4.996004e-15 | syncsan: instrumenting dlsum_fmod_inv_gpu_mrhs | syncsan: instrumenting dlsum_bmod_inv_gpu_mrhs | syncsan: ADVERSARIAL (control) 349 load sites eligible (324 replaced), 4633 loads raced (given their current values) | syncsan: 2 instrumented launches, 4 distinct racing instruction pairs (4 race records), 0 accesses untracked (shadow full)
+fixrel_native0: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 1.709743e-14	 max_i |x - xtrue|_i / |x|_i = 1.709743e-14
+fixrel_native1: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 1.110223e-15	 max_i |x - xtrue|_i / |x|_i = 1.110223e-15
+fixrel_native2: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 1.820766e-14	 max_i |x - xtrue|_i / |x|_i = 1.820766e-14
+fixrel_syncsan: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 4.996004e-15	 max_i |x - xtrue|_i / |x|_i = 4.996004e-15 | syncsan: instrumenting dlsum_fmod_inv_gpu_mrhs | syncsan: instrumenting dlsum_bmod_inv_gpu_mrhs | syncsan: 2 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+fixrel_adversarial: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 5.218048e-15	 max_i |x - xtrue|_i / |x|_i = 5.218048e-15 | syncsan: instrumenting dlsum_fmod_inv_gpu_mrhs | syncsan: instrumenting dlsum_bmod_inv_gpu_mrhs | syncsan: ADVERSARIAL 349 load sites eligible (324 replaced), 0 loads returned the value before a racing write | syncsan: 2 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+fixrel_control: exit 0 | .. Sol  0: ||X - Xtrue|| / ||X|| = 4.773959e-15	 max_i |x - xtrue|_i / |x|_i = 4.773959e-15 | syncsan: instrumenting dlsum_fmod_inv_gpu_mrhs | syncsan: instrumenting dlsum_bmod_inv_gpu_mrhs | syncsan: ADVERSARIAL (control) 349 load sites eligible (324 replaced), 0 loads raced (given their current values) | syncsan: 2 instrumented launches, 0 distinct racing instruction pairs (0 race records), 0 accesses untracked (shadow full)
+wall time 77 s

@@ -8,7 +8,7 @@ if [ ! -f /opt/.mirage_done ]; then
 $PIPI "transformers==4.57.1" accelerate safetensors huggingface_hub z3-solver cuda-python pytest
 git clone -q --recursive https://github.com/mirage-project/mirage /opt/mirage && (cd /opt/mirage && git checkout -q ed771bd && git submodule update -q --init --recursive)
 export MIRAGE_HOME=/opt/mirage
-python /work/syncsan/reproduce/daytona/mirage_codegen_fix.py /opt/mirage/src/kernel/task_register.cc
+python /work/syncsan/reproduce/mirage/codegen_fix.py /opt/mirage/src/kernel/task_register.cc
 cp -r /opt/mirage /opt/mirage.pristine
 (cd /opt/mirage && pip install -e . -v > /work/out/mirage_build.log 2>&1; tail -3 /work/out/mirage_build.log)
 python -c "import mirage; print('mirage ok')" || { echo "mirage did not build"; tail -40 /work/out/mirage_build.log; exit 1; }
@@ -22,7 +22,7 @@ restore() { cp /opt/mirage.pristine/demo/qwen3/demo.py $DEMO; cp /opt/mirage.pri
 apply() {
   restore
   case $1 in *nocap*) sed -i 's|    if size / 96 > 400:|    if False and size / 96 > 400:|' $DEMO; grep -c "if False and size" $DEMO;; esac
-  case $1 in *fix*) python /work/syncsan/reproduce/daytona/mirage_fix.py $LIN;; esac
+  case $1 in *fix*) python /work/syncsan/reproduce/mirage/fix.py $LIN;; esac
 }
 cd /opt/mirage
 step torch-baseline

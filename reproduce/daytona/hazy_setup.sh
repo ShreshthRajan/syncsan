@@ -10,4 +10,4 @@ EXT=$(python -c "import sysconfig; print(sysconfig.get_config_var('EXT_SUFFIX'))
 # without python3-config the Makefile names the module mk_llama with no extension suffix; give it the suffix
 build() { cd /opt/mk/demos/$1 && THUNDERKITTENS_ROOT=/opt/mk/ThunderKittens MEGAKERNELS_ROOT=/opt/mk PYTHON_VERSION=$PV GPU=H100 make > /work/out/build_$1.log 2>&1; [ -f mk_llama ] && mv mk_llama mk_llama$EXT; ls /opt/mk/demos/$1/*.so 2>/dev/null | head -1; }
 build low-latency-llama
-cp -r /opt/mk/demos/low-latency-llama /opt/mk/demos/acqrel && rm -f /opt/mk/demos/acqrel/*.so && python /work/syncsan/reproduce/patch_hazy.py /opt/mk/demos/acqrel acqrel && build acqrel
+cp -r /opt/mk/demos/low-latency-llama /opt/mk/demos/acqrel && rm -f /opt/mk/demos/acqrel/*.so && python /work/syncsan/reproduce/hazy/patch.py /opt/mk/demos/acqrel acqrel && build acqrel

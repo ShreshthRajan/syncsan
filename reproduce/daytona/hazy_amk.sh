@@ -37,7 +37,7 @@ huggingface-cli download unsloth/Llama-3.2-1B-Instruct --exclude '*.pth' 'origin
 PV=$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
 build() { cd /opt/mk/demos/$1 && THUNDERKITTENS_ROOT=/opt/mk/ThunderKittens MEGAKERNELS_ROOT=/opt/mk PYTHON_VERSION=$PV GPU=H100 make > /work/out/build_$1.log 2>&1; ls /opt/mk/demos/$1/*.so 2>/dev/null | head -1; }
 build low-latency-llama
-cp -r /opt/mk/demos/low-latency-llama /opt/mk/demos/acqrel && rm -f /opt/mk/demos/acqrel/*.so && python /work/syncsan/reproduce/patch_hazy.py /opt/mk/demos/acqrel acqrel && build acqrel
+cp -r /opt/mk/demos/low-latency-llama /opt/mk/demos/acqrel && rm -f /opt/mk/demos/acqrel/*.so && python /work/syncsan/reproduce/hazy/patch.py /opt/mk/demos/acqrel acqrel && build acqrel
 H="python megakernels/scripts/generate.py mode=mk model=unsloth/Llama-3.2-1B-Instruct ntok=8 num_warmup=0 num_iters=1"
 HT="$SANT SYNCSAN_KERNEL=megakernel::mk"
 for m in native syncsan adversarial control fixed_syncsan fixed_adversarial; do
