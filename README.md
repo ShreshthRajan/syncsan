@@ -1,9 +1,12 @@
 # syncsan
 
-syncsan finds data races in GPU megakernels. It runs your CUDA program unchanged under
-[NVBit](https://github.com/NVlabs/NVBit) and reports every pair of memory accesses that no barrier, fence,
-release/acquire or async-copy wait puts in order. With `SYNCSAN_ADVERSARIAL=1` it also hands each racy load the stale
-value the PTX memory model allows, so you can see what the race does to your output.
+by [Shreshth Rajan](https://shreshthrajan.com)
+
+syncsan finds data races in GPU megakernels and shows what each one does to your output. It runs your CUDA program
+unchanged, under NVIDIA's [NVBit](https://github.com/NVlabs/NVBit), and reports every pair of memory accesses that no
+barrier, fence, release and acquire, or async-copy wait puts in order. In adversarial mode (`SYNCSAN_ADVERSARIAL=1`) it hands
+each racy load the stale value that the PTX memory model allows, so a race that never fails on your GPU shows up as
+wrong output.
 
 Megakernels need this more than most code. They run a whole model in one launch and pass activations between SMs
 through counters in global memory. A missing fence in one of those handoffs rarely fails on today's GPUs, so it
@@ -45,7 +48,7 @@ spin, and syncsan reports nothing. Build your own kernels with `-lineinfo` so th
 ([example workflow](examples/github-actions.yml)), and `--sample k` checks one in `k` plain accesses when the full
 check is too slow. `syncsan run --help` lists the rest.
 
-## What it has found
+## What it found
 
 The clearest case is SuperLU_DIST. A commit that fixed a dropped fence in its GPU triangular solve restored the
 consumer's acquire but left out the producer's release. syncsan flagged the producer's decrement, and in adversarial
@@ -69,7 +72,7 @@ original megakernel reads the NaN in all 1,000 generations and the fixed one in 
 release/acquire fixes it at a 9% latency cost
 ([HazyResearch/Megakernels#16](https://github.com/HazyResearch/Megakernels/issues/16)).
 
-The other finds:
+syncsan also found these:
 
 - [AutoMegaKernel](https://github.com/RightNow-AI/AutoMegaKernel) waits with `atomicAdd(c, 0)`, which a comment calls
   an acquire but PTX treats as relaxed. In adversarial mode its own `--verify` check fails
