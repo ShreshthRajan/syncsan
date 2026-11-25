@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Repository reorganized: tool sources in `src/`, findings in `docs/findings/`, runners in `reproduce/` (one table,
+  Modal scripts in `reproduce/modal/`), result summaries grouped by project in `results/`, and the cuHadron category
+  in `tests/cuhadron/`. The README is rewritten in plain language. No change to the tool.
+
 ## 0.10.3 (2026-11-24)
 
 - Fixed a missed race: a release published the block clock at the releasing store instead of at its fence, so accesses
