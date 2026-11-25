@@ -8,7 +8,10 @@ ARCH="${1:-sm_80}"
 cmake -S src -B build -DNVBIT_ROOT="$NVBIT_ROOT" -DNVBIT_TOOL_CUDA_ARCHITECTURES="${ARCH#sm_}" > build.log 2>&1 && cmake --build build -j >> build.log 2>&1 || { tail -40 build.log; exit 1; }
 nvcc -O2 -arch="$ARCH" -lineinfo -o build/race_cases tests/race_cases.cu -lcuda || exit 1
 fail=0
-check() {  # case expect(racy|clean)
+ARCHN="${ARCH#sm_}"; ARCHN="${ARCHN%%[a-z]*}"
+skipped=0
+check() {  # case expect(racy|clean) [minimum compute capability, such as 80 or 90]
+  if [ -n "${3:-}" ] && [ "$ARCHN" -lt "$3" ]; then echo "SKIP $1 (needs sm_$3)"; skipped=$((skipped + 1)); return; fi
   out=$(LD_PRELOAD=$PWD/build/syncsan.so build/race_cases "$1" 2>&1); n=$(grep -c "syncsan: RACE" <<< "$out")
   if { [ "$2" = racy ] && [ "$n" -gt 0 ]; } || { [ "$2" = clean ] && [ "$n" -eq 0 ]; }; then echo "PASS $1 ($n reports, expected $2)"
   else echo "FAIL $1 ($n reports, expected $2)"; echo "$out" | tail -20; fail=1; fi
@@ -28,30 +31,30 @@ check rmw_acqrel clean
 check rmw_relaxed racy
 check last_block_fenced clean
 check last_block_nofence racy
-check bulk_store_before_wait racy    # sm_90: cp.async.bulk shared->global
-check bulk_store_waited clean
-check bulk_store_barrier_first racy
-check ldgsts_racy racy
-check ldgsts_barrier clean
+check bulk_store_before_wait racy 90 # sm_90: cp.async.bulk shared->global
+check bulk_store_waited clean 90
+check bulk_store_barrier_first racy 90
+check ldgsts_racy racy 80
+check ldgsts_barrier clean 80
 check big_grid_racy racy             # 16,384 blocks, folded onto 8,192 slots
 check big_grid_clean clean
-check tma_store_before_wait racy     # sm_90: TMA tensor store (UTMASTG) through a decoded tensor map
-check tma_store_waited clean
-check tma_store_barrier_first racy
-check tma_load_nowait racy           # TMA tensor load (UTMALDG) completed through an mbarrier
-check tma_load_waited clean
+check tma_store_before_wait racy 90 # sm_90: TMA tensor store (UTMASTG) through a decoded tensor map
+check tma_store_waited clean 90
+check tma_store_barrier_first racy 90
+check tma_load_nowait racy 90 # TMA tensor load (UTMALDG) completed through an mbarrier
+check tma_load_waited clean 90
 check smem_racy racy                 # shared memory (v4)
 check smem_barrier clean
 check smem_named_barrier clean
 check smem_named_barrier_racy racy
-check smem_mbarrier clean
-check smem_mbarrier_racy racy
-check cpasync_smem_racy racy
-check cpasync_smem_waited clean
-check bulk_store_smem_racy racy
-check bulk_store_smem_waited clean
-check proxy_fence_missing racy       # generic writes, then a bulk store with no fence.proxy.async
-check proxy_fence_present clean
+check smem_mbarrier clean 80
+check smem_mbarrier_racy racy 80
+check cpasync_smem_racy racy 80
+check cpasync_smem_waited clean 80
+check bulk_store_smem_racy racy 90
+check bulk_store_smem_waited clean 90
+check proxy_fence_missing racy 90 # generic writes, then a bulk store with no fence.proxy.async
+check proxy_fence_present clean 90
 
 # a release or acquire by one thread covers the other warps of its block only across a barrier
 check spinlock_no_release racy       # the fence before the critical section does not release it
@@ -82,4 +85,5 @@ done
 nvcc -O2 -arch="$ARCH" -lineinfo -o build/concurrent_streams tests/concurrent_streams.cu || exit 1
 out=$(LD_PRELOAD=$PWD/build/syncsan.so build/concurrent_streams 2>&1)
 if [ "$(grep -c "syncsan: RACE" <<< "$out")" = 0 ] && grep -q "runs unchecked" <<< "$out"; then echo "PASS concurrent_streams (0 reports, second kernel unchecked)"; else echo "FAIL concurrent_streams"; echo "$out" | tail -20; fail=1; fi
+[ "$skipped" -gt 0 ] && echo "skipped $skipped cases this GPU cannot run"
 exit $fail

@@ -125,6 +125,7 @@ __global__ void bulk_store(int* g, int* out, int mode) {
 
 // cp.async (LDGSTS) reads g in warp 0 while warp 1 writes it: racy without the barrier between them.
 __global__ void ldgsts(int* g, int* out, int barrier) {
+#if __CUDA_ARCH__ >= 800
   __shared__ int s[32];
   const int t = threadIdx.x;
   if (barrier) { if (t >= 32) g[t - 32] = t; __syncthreads(); }
@@ -134,6 +135,7 @@ __global__ void ldgsts(int* g, int* out, int barrier) {
     out[t] = s[t];
   }
   if (!barrier && t >= 32) g[t - 32] = t;
+#endif
 }
 
 // More blocks than syncsan's 8,192 slots: each block writes its own words; with racy, the last block also writes word 0,
@@ -194,27 +196,36 @@ __global__ void smem_handoff(int* out, int mode) {
   __shared__ alignas(8) unsigned long long mbar;
   const int t = threadIdx.x, lane = t & 31;
   const unsigned mb = (unsigned)__cvta_generic_to_shared(&mbar);
+#if __CUDA_ARCH__ >= 800   // mbarriers (modes 4 and 5) need sm_80
   if (t == 0) asm volatile("mbarrier.init.shared.b64 [%0], 1;" :: "r"(mb) : "memory");
+#endif
   __syncthreads();
   if (t < 32) {
     s[lane] = lane + 1;
     if (mode == 1) __syncthreads();
     else if (mode == 2 || mode == 3) asm volatile("bar.arrive 1, 64;" ::: "memory");
+#if __CUDA_ARCH__ >= 800
     else if (mode >= 4) { __syncwarp(); if (lane == 0) asm volatile("mbarrier.arrive.shared.b64 _, [%0];" :: "r"(mb) : "memory"); }
+#endif
   } else {
     int v = 0;
     if (mode == 1) __syncthreads();
     else if (mode == 2) asm volatile("bar.sync 1, 64;" ::: "memory");
     else if (mode == 3) { v = s[lane]; asm volatile("bar.sync 1, 64;" ::: "memory"); }
+#if __CUDA_ARCH__ >= 800
     else if (mode == 4) asm volatile("{ .reg .pred p; W: mbarrier.try_wait.parity.shared.b64 p, [%0], 0; @!p bra W; }" :: "r"(mb) : "memory");
+#endif
     if (mode != 3) v = s[lane];
     out[lane] = v;
+#if __CUDA_ARCH__ >= 800
     if (mode == 5) asm volatile("{ .reg .pred p; W: mbarrier.try_wait.parity.shared.b64 p, [%0], 0; @!p bra W; }" :: "r"(mb) : "memory");
+#endif
   }
 }
 
 // cp.async into shared memory: read before cp.async.wait_all (racy) or after it (clean); same thread.
 __global__ void cpasync_smem(const int* g, int* out, int wait_first) {
+#if __CUDA_ARCH__ >= 800
   __shared__ int s[64];
   const int t = threadIdx.x;
   asm volatile("cp.async.ca.shared.global [%0], [%1], 4;" :: "r"((unsigned)__cvta_generic_to_shared(s + t)), "l"(g + t) : "memory");
@@ -222,6 +233,7 @@ __global__ void cpasync_smem(const int* g, int* out, int wait_first) {
   if (wait_first) { asm volatile("cp.async.wait_all;" ::: "memory"); v = s[t]; }
   else { v = s[t]; asm volatile("cp.async.wait_all;" ::: "memory"); }
   out[t] = v;
+#endif
 }
 
 // cp.async.bulk shared -> global reads s while warp 1 overwrites it: racy without wait_group.read + barrier first.
@@ -280,6 +292,7 @@ __global__ void adv_mp(unsigned* flag, unsigned* data, unsigned* out, int acquir
 // shared memory through the async proxy, so a fence.proxy.async must come between the writes and the copy (CUTLASS's
 // tma_store_fence). fence = 0: none (a proxy race); 1: every thread fences before the barrier.
 __global__ void proxy_store(int* g, int fence) {
+#if __CUDA_ARCH__ >= 900
   __shared__ alignas(128) int s[64];
   const int t = threadIdx.x;
   s[t] = t;
@@ -290,6 +303,7 @@ __global__ void proxy_store(int* g, int fence) {
     asm volatile("cp.async.bulk.commit_group;" ::: "memory");
     asm volatile("cp.async.bulk.wait_group 0;" ::: "memory");
   }
+#endif
 }
 
 // A spinlock per block's thread 0: lock with atomicCAS, then the critical section, then unlock with atomicExch.
