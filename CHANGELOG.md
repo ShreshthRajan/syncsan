@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.3 (2026-11-24)
+
+- Fixed a missed race: a release published the block clock at the releasing store instead of at its fence, so accesses
+  between the fence and the store counted as released (a spinlock whose only fence follows the lock). The block clock
+  now ticks at each fence and the release publishes the fence-time value; an SC fence publishes before the tick.
+  `spinlock_no_release` / `spinlock_released` cases; 51 known-answer checks on H100. SuperLU_DIST unchanged (4 pairs on
+  587f38f, 0 on 239280c). Found by the puzzles built on syncsan.
+
 ## 0.10.2 (2026-11-24)
 
 - SuperLU_DIST: the developers confirmed the incomplete fix syncsan found and fixed it in 239280c; syncsan reports 0

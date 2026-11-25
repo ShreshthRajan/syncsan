@@ -66,9 +66,15 @@ __device__ void join1(const DevState* S, uint32_t* dst, const uint32_t* src) {  
 __device__ void rel_cover(const DevState* S, uint32_t b, uint32_t R, uint32_t k) {
   uint32_t* c = relcov_of(S, b, k);
   if (*(volatile uint32_t*)(c + 32) != k + 1) {
-    const uint32_t* p = relcov_of(S, b, k - 1);
-    const bool fresh = k <= 1, chain = !fresh && *(volatile const uint32_t*)(p + 32) == k;
-    for (uint32_t w = 0; w < 32; ++w) c[w] = fresh ? 0u : chain ? *(volatile const uint32_t*)(p + w) : 0xFFFFFFFFu;
+    // carry over the nearest earlier release's coverage (clock values without a release, such as fences with none after
+    // them, leave gaps); with none in the ring: nothing covered if the ring reaches back to the start, else all covered
+    const uint32_t* p = nullptr;
+    for (uint32_t j = 1; j < WO_RELH && j < k; ++j) {
+      const uint32_t* q = relcov_of(S, b, k - j);
+      if (*(volatile const uint32_t*)(q + 32) == k - j + 1) { p = q; break; }
+    }
+    const bool fresh = !p && k <= WO_RELH;
+    for (uint32_t w = 0; w < 32; ++w) c[w] = p ? *(volatile const uint32_t*)(p + w) : fresh ? 0u : 0xFFFFFFFFu;
     __threadfence();
     *(volatile uint32_t*)(c + 32) = k + 1;
   }
@@ -211,9 +217,11 @@ extern "C" __device__ __noinline__ void syncsan_fence(int pred, uint32_t kind, u
   if (!pred) return;
   const uint32_t t = my_thread(S);
   if (kind != FENCE_CCTL) {
-    S->fenced[t] = 1;                                   // the thread's next strong store or atomic is a release
-    // what this warp's waits saw of the block's copy agent goes into the block's clock, so a release carries it
+    // The thread's next strong store or atomic is a release of what came before this fence: the block clock ticks here,
+    // and the release publishes the value it had at the fence, so accesses between the fence and the store (stamped
+    // with the newer value) are not published by it (a fence, then a critical section, then the unlocking store).
     const uint32_t b = linear_cta(S), v = S->warp_agent[my_warp(S)];
+    // what this warp's waits saw of the block's copy agent goes into the block's clock, so a release carries it
     if (v && S->n > S->nb) atomicMax(clock_of(S, b) + S->nb + b, v);
   }
   if (kind == FENCE_SC) {                               // SC fences synchronize in their total order: join the SC clock, then publish
@@ -228,6 +236,15 @@ extern "C" __device__ __noinline__ void syncsan_fence(int pred, uint32_t kind, u
     join(S, S->sc_clock, mine, lanes);
     __threadfence();
     __syncwarp(lanes);
+  }
+  if (kind != FENCE_CCTL) {   // after the SC publish, so both it and the thread's next release carry the fence-time value
+    const uint32_t b = linear_cta(S);
+    const unsigned lanes = __activemask();
+    const int lead = __ffs(lanes) - 1;
+    uint32_t k = 0;
+    if ((int)get_laneid() == lead) k = atomicAdd(clock_of(S, b) + b, 1u);
+    k = __shfl_sync(lanes, k, lead);
+    S->fenced[t] = k + 1;
   }
   const uint32_t np = S->pending_n[t];
   if (np) {                                             // strong loads before this fence: each was an acquire
@@ -270,15 +287,18 @@ __device__ __forceinline__ void check_access(DevState* S, uint32_t iid, uint32_t
   const uint32_t block = linear_cta(S), wib = linear_tid() >> 5, t = my_thread(S);
   uint32_t* mine = clock_of(S, block);
   const bool write = flags & ACC_WRITE, sync = flags & (ACC_STRONG | ACC_ATOMIC);
-  if (sync && write && S->fenced[t]) {                 // release: the location now carries this warp's clock
+  if (sync && write && S->fenced[t]) {                 // release: the location now carries this block's clock as of the fence
+    const uint32_t k = S->fenced[t] - 1;               // the block's own entry when the fence ran
     S->fenced[t] = 0;
     prof(S, PROF_REL); prof(S, PROF_JOIN_ENTRIES, S->n);
     SyncEntry* e = sync_entry(S, addr >> 2, true);
     uint32_t* c = clock_at(S, e);
-    const uint32_t k = *(volatile uint32_t*)(mine + block);
     if (S->wo) rel_cover(S, block, wib, k);
     if (c) {
-      for (uint32_t i = 0; i < S->n; ++i) { const uint32_t v = mine[i]; if (flags & ACC_ATOMIC) { if (v) atomicMax(c + i, v); } else c[i] = v; }
+      for (uint32_t i = 0; i < S->n; ++i) {
+        const uint32_t v = i == block ? k : mine[i];
+        if (flags & ACC_ATOMIC) { if (v) atomicMax(c + i, v); } else c[i] = v;
+      }
       __threadfence();
       atomicAdd((unsigned int*)&e->version, 1u);
     }

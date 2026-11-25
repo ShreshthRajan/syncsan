@@ -54,6 +54,8 @@ check proxy_fence_missing racy       # generic writes, then a bulk store with no
 check proxy_fence_present clean
 
 # a release or acquire by one thread covers the other warps of its block only across a barrier
+check spinlock_no_release racy       # the fence before the critical section does not release it
+check spinlock_released clean
 check mp_block_barriers clean
 check mp_block_no_producer_barrier racy
 check mp_block_no_consumer_barrier racy

@@ -187,7 +187,7 @@ and turns the races it finds into outputs the model allows. [docs/prior-work.md]
 
 [reproduce/](reproduce/) reruns the Hazy, AutoMegaKernel, megakernel-zoo, Lucebox, Mirage, SuperLU_DIST and CUTLASS
 results on rented GPUs through Modal or Daytona. The cuHadron and Magni VM runs are not scripted here yet.
-`tests/run_tests.sh` runs 49 known-answer checks (race and clean cases, adversarial and control cases, the two-stream
+`tests/run_tests.sh` runs 51 known-answer checks (race and clean cases, adversarial and control cases, the two-stream
 check) on a local GPU.
 
 ## Citing

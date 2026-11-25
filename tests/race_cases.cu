@@ -292,6 +292,19 @@ __global__ void proxy_store(int* g, int fence) {
   }
 }
 
+// A spinlock per block's thread 0: lock with atomicCAS, then the critical section, then unlock with atomicExch.
+// early = 1: the only fence is right after the lock (an acquire), so the critical section is never released (a race
+// with the next holder); early = 0: a fence before the unlock as well (clean).
+__global__ void spinlock_cs(unsigned* lock, unsigned* sum, int early) {
+  if (threadIdx.x != 0) return;
+  while (atomicCAS(lock, 0u, 1u) != 0u) {}
+  __threadfence();
+  sum[0] += blockIdx.x + 1;
+  sum[1] += 1;
+  if (!early) __threadfence();
+  atomicExch(lock, 0u);
+}
+
 int main(int argc, char** argv) {
   const char* c = argc > 1 ? argv[1] : "";
   int *buf, *out; int4 *src, *stage;
@@ -314,6 +327,8 @@ int main(int argc, char** argv) {
   else if (!strcmp(c, "adv_mp_relaxed")) adv_mp<<<2, 32>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out, 0, 0);
   else if (!strcmp(c, "adv_mp_acquire")) adv_mp<<<2, 32>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out, 1, 0);
   else if (!strcmp(c, "adv_subword")) adv_mp<<<2, 32>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out, 0, 1);
+  else if (!strcmp(c, "spinlock_no_release")) spinlock_cs<<<64, 32>>>((unsigned*)buf, (unsigned*)buf + 64, 1);
+  else if (!strcmp(c, "spinlock_released")) spinlock_cs<<<64, 32>>>((unsigned*)buf, (unsigned*)buf + 64, 0);
   else if (!strcmp(c, "rmw_acqrel")) rmw_handoff<<<2, 32>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out, 1);
   else if (!strcmp(c, "rmw_relaxed")) rmw_handoff<<<2, 32>>>((unsigned*)buf, (unsigned*)buf + 64, (unsigned*)out, 0);
   else if (!strcmp(c, "last_block_fenced")) last_block<<<64, 128>>>((unsigned*)buf, (unsigned*)buf + 1024, (unsigned*)out, 1);
