@@ -11,23 +11,34 @@ survives testing.
 
 ## Quick start
 
-You need Linux, an NVIDIA GPU from the A100 onward, CUDA 12 and CMake 3.29.
+You need Linux, an NVIDIA GPU from the A100 onward, and CUDA 12.
 
 ```
-pip install git+https://github.com/ShreshthRajan/syncsan
+pip install syncsan
 syncsan build --arch 90          # once; use 100 for B200, 120 for RTX 50xx, 80 for A100
 syncsan run -- python generate.py
 ```
 
-Build your kernels with `-lineinfo` so reports point at source lines. This report comes from Hazy Research's Llama
-megakernel, where a TMA store in attention races with the matrix-vector load that reads it on another SM:
+To see it work before pointing it at your own code, try [examples/handoff.cu](examples/handoff.cu). It is the most
+common megakernel bug in 30 lines: one block writes data, fences and bumps a counter, and another block spins on the
+counter and reads the data with no fence after the spin.
 
 ```
-syncsan: RACE (write then read) at 0x2ba22b84c900
-  block 18 copy engine (issued by warp 17): UTMASTG.4D ...  [tma.cuh:74 < attention_partial.cu:577 < storer.cuh:6]
-  block 55 warp 3: LDG.E.128 R8, ...                        [util.cuh:158 < matvec_adds.cu:145 < consumer.cuh:6]
-  no barrier, release/acquire pair, async-copy wait or atomic orders these two accesses
+$ nvcc -arch=sm_90 -lineinfo -o handoff examples/handoff.cu
+$ ./handoff
+sum = 32896 (expected 32896): correct
+$ syncsan run -- ./handoff
+syncsan: RACE (write then read) at 0x7ef8ffe00300
+  block 1 warp 2: STG.E desc[UR6][R2.64], R5 ;  [handoff(unsigned int*, int*, int*)+0x1e0 handoff.cu:15]
+  block 0 warp 2: LDG.E R2, desc[UR6][R2.64] ;  [handoff(unsigned int*, int*, int*)+0x120 handoff.cu:26]
+sum = 32896 (expected 32896): correct
+$ SYNCSAN_ADVERSARIAL=1 syncsan run -- ./handoff
+sum = 0 (expected 32896): WRONG
 ```
+
+The kernel gives the right sum on the GPU, syncsan points at the write on line 15 and the read on line 26, and
+adversarial mode shows the wrong sum the memory model allows. Rebuild with `-DFIXED`, which adds the fence after the
+spin, and syncsan reports nothing. Build your own kernels with `-lineinfo` so the reports name source lines.
 
 `--kernel NAME` checks only the kernels whose name contains `NAME`, `--exitcode 1` makes a race fail your CI
 ([example workflow](examples/github-actions.yml)), and `--sample k` checks one in `k` plain accesses when the full
