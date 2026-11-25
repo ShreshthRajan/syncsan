@@ -150,13 +150,14 @@ writing the next row's, so a warp that runs ahead could change another row's tok
 (prefill, batching, speculative decoding) and did not show up in our greedy runs. Mirage runs its worker and scheduler
 kernels at once, which exposed a syncsan bug (fixed in 0.8.0). Details in [docs/mirage.md](docs/mirage.md).
 
-These results, the Hazy rerun and the reruns on RTX 5090 are on syncsan 0.9 (`results/*_0.9_*`); SuperLU_DIST and CUTLASS
-below were measured with 0.6 to 0.8.
+These results, the Hazy rerun and the reruns on RTX 5090 are on syncsan 0.9 (`results/*_0.9_*`); CUTLASS below was measured with 0.6; the SuperLU_DIST fix check is on 0.10.
 
 **SuperLU_DIST.** The GPU triangular solve's fix for a dropped fence (commit 587f38f) restored the consumer's acquire
-but left the producer's release out: syncsan still reports 4 racing pairs, adversarial mode gives a wrong solution
-(error about 0.7), and one `__threadfence()` before the producer's `atomicSub` clears both. The original bug (4755a5e)
-is flagged at the same lines and fails natively. Details in [docs/superlu.md](docs/superlu.md).
+but left the producer's release out: syncsan reported 4 racing pairs, and adversarial mode gave a wrong solution (error
+about 0.7). The SuperLU_DIST developers confirmed it in [xiaoyeli/superlu_dist#261](https://github.com/xiaoyeli/superlu_dist/issues/261)
+and fixed it the same day in 239280c, with a release fence before each producer's decrement in the double, single and
+complex solves. On 239280c syncsan reports 0 pairs and the adversarial solve is correct (error 6e-15). The original bug
+(4755a5e) is flagged at the same lines and fails natively. Details in [docs/superlu.md](docs/superlu.md).
 
 **CUTLASS Stream-K.** On CUTLASS issue #2027, syncsan reports the known race between the middle split's `atomicAdd` and
 the final split's read in 3.6.0, which fails natively, and nothing in the fixed 3.7.0. Details in

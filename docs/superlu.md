@@ -15,6 +15,16 @@ and then reads `lsum` (`x[..] += lsum[..]` at `:2333`, `:3147`; `lsum[il+i] = te
 consumer's reads to be ordered after the producer's additions, the producer needs a release before the `atomicSub` and
 the consumer an acquire after the poll. 587f38f added the acquire side only.
 
+## Confirmed and fixed upstream
+
+The SuperLU_DIST developers confirmed the missing release in
+[xiaoyeli/superlu_dist#261](https://github.com/xiaoyeli/superlu_dist/issues/261) and fixed it in 239280c (Nov 24, 2026):
+a `__threadfence()` before each producer's `atomicSub` on `fmod` and `bmod`, in `pdgstrs_lsum_cuda.cu` and its single and
+complex counterparts, and a warp synchronization before the fence where one lane decremented for the whole warp. On
+239280c, syncsan 0.10 reports 0 racing pairs, the adversarial solve is correct (error 6.2e-15) and so is the control
+(`results/superlu_239280c_20261124`, `reproduce/daytona/superlu.sh`). On 587f38f in the same run: 4 pairs, adversarial
+error 0.74, control 5.0e-15.
+
 ## Results
 
 | Build | Racing pairs | Native error | Adversarial error | Control error |
